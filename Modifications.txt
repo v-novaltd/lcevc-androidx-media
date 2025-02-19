@@ -1,0 +1,19 @@
+The list below details which files V-Nova has modified from the androidx/media project.
+
+Modified files:
+
+.gitignore
+README.md
+api.txt
+build.gradle
+core_settings.gradle
+demos/main/build.gradle
+demos/main/proguard-rules.txt
+demos/main/src/main/AndroidManifest.xml
+demos/main/src/main/java/androidx/media3/demo/main/SampleChooserActivity.java
+demos/main/src/mainLcevc/java/androidx/media3/demo/main/DemoUtil.java
+libraries/exoplayer/build.gradle
+libraries/exoplayer/src/main/java/androidx/media3/exoplayer/util/DebugTextViewHelper.java
+libraries/exoplayer/src/main/java/androidx/media3/exoplayer/video/MediaCodecVideoRenderer.java
+libraries/extractor/src/main/java/androidx/media3/extractor/mkv/MatroskaExtractor.java
+missing_aar_type_workaround.gradle

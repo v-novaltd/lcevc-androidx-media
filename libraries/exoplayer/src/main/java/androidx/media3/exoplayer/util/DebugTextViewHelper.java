@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2016 The Android Open Source Project
+ * Modified 2023-2025 V-Nova Limited
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,7 +23,9 @@ import androidx.annotation.Nullable;
 import androidx.media3.common.ColorInfo;
 import androidx.media3.common.Format;
 import androidx.media3.common.Player;
+import androidx.media3.common.VideoSize;
 import androidx.media3.common.util.Assertions;
+import androidx.media3.common.util.Log;
 import androidx.media3.common.util.UnstableApi;
 import androidx.media3.exoplayer.DecoderCounters;
 import androidx.media3.exoplayer.ExoPlayer;
@@ -86,7 +89,9 @@ public class DebugTextViewHelper {
   @UnstableApi
   @SuppressLint("SetTextI18n")
   protected final void updateAndPost() {
-    textView.setText(getDebugString());
+    final String dbgString = getDebugString();
+    Log.i("DTVHelper", dbgString);
+    textView.setText(dbgString);
     textView.removeCallbacks(updater);
     textView.postDelayed(updater, REFRESH_INTERVAL_MS);
   }
@@ -127,6 +132,7 @@ public class DebugTextViewHelper {
   @UnstableApi
   protected String getVideoString() {
     Format format = player.getVideoFormat();
+    VideoSize videoSize = player.getVideoSize();
     DecoderCounters decoderCounters = player.getVideoDecoderCounters();
     if (format == null || decoderCounters == null) {
       return "";
@@ -136,11 +142,11 @@ public class DebugTextViewHelper {
         + "(id:"
         + format.id
         + " r:"
-        + format.width
+        + videoSize.width
         + "x"
-        + format.height
+        + videoSize.height
         + getColorInfoString(format.colorInfo)
-        + getPixelAspectRatioString(format.pixelWidthHeightRatio)
+        + getPixelAspectRatioString(videoSize.pixelWidthHeightRatio)
         + getDecoderCountersBufferCountString(decoderCounters)
         + " vfpo: "
         + getVideoFrameProcessingOffsetAverageString(

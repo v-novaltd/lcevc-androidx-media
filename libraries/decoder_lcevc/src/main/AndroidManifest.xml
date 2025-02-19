@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+ SPDX-FileCopyrightText: 2025 V-Nova International Limited <legal@v-nova.com>
+ SPDX-License-Identifier: BSD-3-Clause-Clear WITH V-Nova-No-Relicense-Exception
+-->
+
+<manifest package="com.vnova.lcevc.decoder">
+  <uses-sdk />
+</manifest>

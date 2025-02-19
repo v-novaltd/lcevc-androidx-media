@@ -1,4 +1,5 @@
 // Copyright (C) 2016 The Android Open Source Project
+// Modified 2023-2025 V-Nova Limited
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -36,8 +37,9 @@ android {
 
     buildTypes {
         release {
-            shrinkResources true
-            minifyEnabled true
+            // This needs to be reverted back to true, Currently its set to false to avoid the proguard errors.
+            shrinkResources false
+            minifyEnabled false
             proguardFiles = [
                 "proguard-rules.txt",
                 getDefaultProguardFile('proguard-android.txt')
@@ -62,9 +64,32 @@ android {
             dimension "decoderExtensions"
             buildConfigField "boolean", "USE_DECODER_EXTENSIONS", "false"
         }
+        // This will enable all extensions excluding the MPEG-5 Part 2 (LCEVC) one
         withDecoderExtensions {
             dimension "decoderExtensions"
             buildConfigField "boolean", "USE_DECODER_EXTENSIONS", "true"
+        }
+        // This will enable all extensions including the MPEG-5 Part 2 (LCEVC) one
+        withDecoderExtensionsWithLcevc {
+            dimension "decoderExtensions"
+            buildConfigField "boolean", "USE_DECODER_EXTENSIONS", "true"
+        }
+    }
+
+    sourceSets {
+        noDecoderExtensions {
+            java.srcDirs = ['src/main']
+        }
+        withDecoderExtensions {
+            java.srcDirs = ['src/main']
+        }
+        withDecoderExtensionsWithLcevc {
+            java.srcDirs += 'src/mainLcevc'
+            main {
+                java {
+                    exclude '**/DemoUtil.java'
+                }
+            }
         }
     }
 }
@@ -83,6 +108,7 @@ dependencies {
     implementation project(modulePrefix + 'lib-ui')
     implementation project(modulePrefix + 'lib-datasource-cronet')
     implementation project(modulePrefix + 'lib-exoplayer-ima')
+    withDecoderExtensionsWithLcevcImplementation project(modulePrefix + 'lib-decoder-lcevc')
     withDecoderExtensionsImplementation project(modulePrefix + 'lib-decoder-av1')
     withDecoderExtensionsImplementation project(modulePrefix + 'lib-decoder-ffmpeg')
     withDecoderExtensionsImplementation project(modulePrefix + 'lib-decoder-flac')

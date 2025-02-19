@@ -1,169 +1,62 @@
-# AndroidX Media
+# LCEVC AndroidX Media
 
 AndroidX Media is a collection of libraries for implementing media use cases on
 Android, including local playback (via ExoPlayer), video editing (via Transformer) and media sessions.
 
-## Documentation
+This repo is a fork of the official Google maintained [AndroidX Media repo](https://github.com/androidx/media), tag 1.2.1, with the aim of adding support for the seamless playback of [MPEG-5 Part 2 ISO/IEC 23094-2](https://www.iso.org/standard/79143.html), **Low Complexity Enhancement Video Coding** ([LCEVC](https://www.lcevc.org)) encoded content.
 
-*   The [developer guide][] provides a wealth of information.
-*   The [class reference][] documents the classes and methods.
-*   The [release notes][] document the major changes in each release.
-*   The [media dev center][] provides samples and guidelines.
-*   Follow our [developer blog][] to keep up to date with the latest
-    developments!
+Support for LCEVC is added here by means of a decoder library (previously known as 'extensions' in ExoPlayer, the precursor of AndroidX Media), called `decoder_lcevc`, in a similar way as the existing `decoder_av1` that is part of the AndroidX Media project.
 
-[developer guide]: https://developer.android.com/guide/topics/media/media3
-[class reference]: https://developer.android.com/reference/androidx/media3/common/package-summary
-[release notes]: RELEASENOTES.md
-[media dev center]: https://developer.android.com/media
-[developer blog]: https://medium.com/google-exoplayer
+In more detail, the upstream repo has here the following changes:
+*   The additional [LCEVC decoder library](libraries/decoder_lcevc);
+*   The additional LCEVC enabled variant, called `withDecoderExtensionsWithLcevc`, of the [main demo app](demos/main);
+*   Minor changes in the core libraries, mainly some backports of changes already in the upstream repo, in release tags from 1.3.1 onwards, that are functional to the LCEVC workflow;
 
-## Migration for existing ExoPlayer and MediaSession projects
+In this repo, every non-LCEVC functionality of the upstream repo, at the release tag mentioned above, is maintained. Please follow the upstream [README](https://github.com/androidx/media/blob/1.2.1/README.md), for reference.
 
-You'll find a [migration guide for existing ExoPlayer and MediaSession users][]
-on developer.android.com.
+Note: The test `androidx.media3.common.util.AtomicFileTest.writeRead` in `lib-common` fails in Windows (this is because the test tries to delete a file that is still in open state, which is not allowed in Windows), unfortunately this is behaviour from the upstream project. As a result, in Windows, a `.\gradlew build` command from the project root directory will fail. The gradlew assembleRelease or assembleDebug commands, however, will succeed since they do not run tests.
 
-[migration guide for existing ExoPlayer and MediaSession users]: https://developer.android.com/guide/topics/media/media3/getting-started/migration-guide
+## Compliance and Legal Information
+This section provides an explanation of the set of compliance artefacts included with the distribution of AndroidX Media, which has been modified and extended by V-Nova. The purpose of these artefacts is to ensure compliance with the open source licenses governing the components of the distributed software.
 
-## API stability
+### Artefacts Included
+The following artefacts have been collated to ensure compliance with the relevant open-source licenses:
 
-AndroidX Media releases provide API stability guarantees, ensuring that the API
-surface remains backwards compatible for the most commonly used APIs. APIs
-intended for more advanced use cases are marked as unstable. To use an unstable
-method or class without lint warnings, you’ll need to add the OptIn annotation
-before using it. For more information see the [UnstableApi][] documentation.
+#### Apache-2.0 License Text
+This is the standard license text of the Apache-2.0 license, which governs the original AndroidX Media code as well as any modifications made to it by V-Nova.
 
-[UnstableApi]: https://github.com/androidx/media/blob/main/libraries/common/src/main/java/androidx/media3/common/util/UnstableApi.java
+Filename: [LICENSE (Apache-2.0 License)](https://github.com/androidx/media/blob/1.2.1/LICENSE)
 
-## Using the libraries
+#### BSD-3-Clause-Clear License Text
+This license covers the decoder LCEVC library (also called 'the extension') developed by V-Nova for AndroidX Media.
 
-You can get the libraries from [the Google Maven repository][]. It's
-also possible to clone this GitHub repository and depend on the modules locally.
+Filename: [libraries/decoder_lcevc/LICENSE.txt (BSD-3-Clause-Clear License)](libraries/decoder_lcevc/LICENSE.txt)
 
-[the Google Maven repository]: https://developer.android.com/studio/build/dependencies#google-maven
+Note: V-Nova has included additional clarifying wording to this license text (see section below). This wording is detailed in the file.
 
-### From the Google Maven repository
+#### List of Modified Files
+This file lists all files that V-Nova has modified from the original AndroidX Media project. The modifications are covered by the Apache-2.0 license.
 
-#### 1. Add module dependencies
+Filename: [Modifications.txt](Modifications.txt)
 
-The easiest way to get started using AndroidX Media is to add gradle
-dependencies on the libraries you need in the `build.gradle.kts` file of your
-app module.
+#### V-Nova’s Additional Wording - No Relicense Exception
 
-For example, to depend on ExoPlayer with DASH playback support and UI components
-you can add dependencies on the modules like this:
+This text clarifies that certain portions of the distributed code (i.e., the extension) are governed by the BSD-3-Clause-Clear license and additional terms that protect V-Nova’s intellectual property.
 
-```kotlin
-implementation("androidx.media3:media3-exoplayer:1.X.X")
-implementation("androidx.media3:media3-exoplayer-dash:1.X.X")
-implementation("androidx.media3:media3-ui:1.X.X")
-```
+Filename: [V-Nova_No_Relicense_Exception.txt](https://raw.githubusercontent.com/v-novaltd/licenses/refs/heads/main/V-Nova_No_Relicense_Exception.txt)
 
-Or in Gradle Groovy DSL `build.gradle`:
+#### V-Nova Proprietary License Text
 
-```groovy
-implementation 'androidx.media3:media3-exoplayer:1.X.X'
-implementation 'androidx.media3:media3-exoplayer-dash:1.X.X'
-implementation 'androidx.media3:media3-ui:1.X.X'
-```
+This proprietary license governs the use of V-Nova's proprietary LCEVC dependency package used by the decoder library, which is included in the distribution alongside AndroidX Media. The proprietary license applies to this specific component, which is not subject to open-source licensing terms such as Apache-2.0 or BSD-3-Clause-Clear. 
 
-where `1.X.X` is your preferred version. All modules must be the same version.
+The proprietary license outlines the terms under which the decoder library may be used, modified, and distributed, including restrictions to protect V-Nova's intellectual property. 
 
-Please see the [AndroidX Media3 developer.android.com page][] for more
-information, including a full list of library modules.
+This license does not grant any rights to the source code of the decoder library, and any use of the library must comply with the conditions specified in the proprietary license text. 
 
-This repository includes some modules that depend on external libraries that
-need to be built manually, and are not available from the Maven repository.
-Please see the individual READMEs under the [libraries directory][] for more
-details.
+Filename: [V-Nova_Proprietary_License.txt](https://raw.githubusercontent.com/v-novaltd/licenses/refs/heads/main/V-Nova_Proprietary_License.txt)
 
-[AndroidX Media3 developer.android.com page]: https://developer.android.com/jetpack/androidx/releases/media3#declaring_dependencies
-[libraries directory]: libraries
+### Contact Information
 
-#### 2. Turn on Java 8 support
+For any questions or clarifications regarding these artefacts or V-Nova’s licensing, please contact the legal team at:
 
-If not enabled already, you also need to turn on Java 8 support in all
-`build.gradle.kts` files depending on AndroidX Media, by adding the following to
-the `android` section:
-
-```kotlin
-compileOptions {
-  targetCompatibility = JavaVersion.VERSION_1_8
-}
-```
-
-Or in Gradle Groovy DSL `build.gradle`:
-
-```groovy
-compileOptions {
-  targetCompatibility JavaVersion.VERSION_1_8
-}
-```
-
-#### 3. Enable multidex
-
-If your Gradle `minSdkVersion` is 20 or lower, you should
-[enable multidex](https://developer.android.com/studio/build/multidex) in order
-to prevent build errors.
-
-### Locally
-
-Cloning the repository and depending on the modules locally is required when
-using some libraries. It's also a suitable approach if you want to make local
-changes, or if you want to use the `main` branch.
-
-First, clone the repository into a local directory:
-
-```sh
-git clone https://github.com/androidx/media.git
-cd media
-```
-
-Next, add the following to your project's `settings.gradle.kts` file, replacing
-`path/to/media` with the path to your local copy:
-
-```kotlin
-gradle.extra.apply {
-  set("androidxMediaModulePrefix", "media-")
-}
-apply(from = file("path/to/media/core_settings.gradle"))
-```
-
-Or in Gradle Groovy DSL `settings.gradle`:
-
-```groovy
-gradle.ext.androidxMediaModulePrefix = 'media-'
-apply from: file("path/to/media/core_settings.gradle")
-```
-
-You should now see the AndroidX Media modules appear as part of your project.
-You can depend on them from `build.gradle.kts` as you would on any other local
-module, for example:
-
-```kotlin
-implementation(project(":media-lib-exoplayer"))
-implementation(project(":media-lib-exoplayer-dash"))
-implementation(project(":media-lib-ui"))
-```
-
-Or in Gradle Groovy DSL `build.gradle`:
-
-```groovy
-implementation project(':media-lib-exoplayer')
-implementation project(':media-lib-exoplayer-dash')
-implementation project(':media-lib-ui')
-```
-
-## Developing AndroidX Media
-
-#### Project branches
-
-Development work happens on the `main` branch. Pull requests should normally be
-made to this branch.
-
-The `release` branch holds the most recent stable release.
-
-#### Using Android Studio
-
-To develop AndroidX Media using Android Studio, simply open the project in the
-root directory of this repository.
+E-mail: legal@v-nova.com 

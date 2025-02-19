@@ -1,0 +1,65 @@
+apply from: "$gradle.ext.androidxMediaSettingsDir/common_library_config.gradle"
+
+def getBuildType() {
+    if (gradle.getStartParameter().taskNames.find({ it.contains("Debug") }) != null) {
+        return "Debug";
+    }
+    return "Release";
+}
+
+android {
+    namespace 'com.vnova.lcevc.decoder'
+
+    compileSdkVersion project.ext.compileSdkVersion
+
+    packagingOptions {
+        merge '**/LICENSE.txt'
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+
+    def buildType = getBuildType();
+    println "# buildType = ${buildType}"
+
+    defaultConfig {
+        minSdkVersion 16
+        targetSdkVersion project.ext.targetSdkVersion
+        consumerProguardFiles 'proguard-rules.txt'
+        testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
+        sourceSets {
+            main {
+                jni.srcDirs = [] // Disable the automatic ndk-build call by Android Studio.
+            }
+            androidTest.assets.srcDir '../test_data/src/test/assets'
+        }
+    }
+
+    publishing {
+        singleVariant("release") {
+            withSourcesJar()
+        }
+    }
+}
+
+dependencies {
+    implementation 'com.vnova.lcevc.decoder:lcevc-dil:3.3.5-8-20250214-a19c49a6'
+    implementation project(modulePrefix + 'lib-decoder')
+    implementation project(modulePrefix + 'lib-exoplayer')
+    androidTestImplementation 'androidx.test.ext:junit:' + androidxTestJUnitVersion
+    compileOnly 'org.jetbrains.kotlin:kotlin-annotations-jvm:' + kotlinAnnotationsVersion
+    compileOnly 'org.checkerframework:checker-qual:' + checkerframeworkVersion
+    implementation 'androidx.annotation:annotation:' + androidxAnnotationVersion
+    androidTestImplementation 'androidx.test:runner:' + androidxTestRunnerVersion
+    androidTestImplementation 'com.google.truth:truth:' + truthVersion
+    testImplementation project(modulePrefix + 'test-utils')
+}
+
+ext {
+    releaseArtifactId = 'media3-decoder-lcevc'
+    releaseName = 'Media3 Lcevc decoder module'
+    releaseDescription = 'LCEVC MediaCodecAdapter to provide an LCEVC enhanced MediaCodec decoder'
+}
+apply from: 'publish.gradle'

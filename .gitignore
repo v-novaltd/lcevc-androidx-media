@@ -79,3 +79,7 @@ extensions/cronet/libs/*
 
 # MIDI extension
 extensions/midi/lib
+
+# LCEVC Libraries built
+glad*.cmake
+*external_decoder.so

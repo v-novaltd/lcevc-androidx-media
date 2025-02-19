@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2016 The Android Open Source Project
+ * Modified 2023-2025 V-Nova Limited
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -250,10 +251,16 @@ public class MatroskaExtractor implements Extractor {
   private static final int ID_LUMNINANCE_MIN = 0x55DA;
 
   /**
-   * BlockAddID value for ITU T.35 metadata in a VP9 track. See also
-   * https://www.webmproject.org/docs/container/.
+   * BlockAddID value for BlockAdditional data as ITU T.35 metadata. See also
+   * https://www.matroska.org/technical/codec_specs.html.
    */
-  private static final int BLOCK_ADDITIONAL_ID_VP9_ITU_T_35 = 4;
+  private static final int BLOCK_ADDITIONAL_TYPE_ITU_T_35 = 4;
+
+  /**
+   * BlockAddID value for BlockAdditional data as ISO/IEC 23094-2 encoded data. See also
+   * https://www.lcevc.org/.
+   */
+  private static final int BLOCK_ADDITIONAL_TYPE_LCEVC = 5;
 
   /**
    * BlockAddIdType value for Dolby Vision configuration with profile <= 7. See also
@@ -1370,8 +1377,8 @@ public class MatroskaExtractor implements Extractor {
   protected void handleBlockAdditionalData(
       Track track, int blockAdditionalId, ExtractorInput input, int contentSize)
       throws IOException {
-    if (blockAdditionalId == BLOCK_ADDITIONAL_ID_VP9_ITU_T_35
-        && CODEC_ID_VP9.equals(track.codecId)) {
+    if (blockAdditionalId == BLOCK_ADDITIONAL_TYPE_ITU_T_35
+        || blockAdditionalId == BLOCK_ADDITIONAL_TYPE_LCEVC) {
       supplementalData.reset(contentSize);
       input.readFully(supplementalData.getData(), 0, contentSize);
     } else {
@@ -2399,13 +2406,7 @@ public class MatroskaExtractor implements Extractor {
      * @param isBlockGroup Whether the samples are from a BlockGroup.
      */
     private boolean samplesHaveSupplementalData(boolean isBlockGroup) {
-      if (CODEC_ID_OPUS.equals(codecId)) {
-        // At the end of a BlockGroup, a positive DiscardPadding value will be written out as
-        // supplemental data for Opus codec. Otherwise (i.e. DiscardPadding <= 0) supplemental data
-        // size will be 0.
-        return isBlockGroup;
-      }
-      return maxBlockAdditionId > 0;
+      return isBlockGroup || maxBlockAdditionId > 0;
     }
 
     /** Returns the HDR Static Info as defined in CTA-861.3. */
