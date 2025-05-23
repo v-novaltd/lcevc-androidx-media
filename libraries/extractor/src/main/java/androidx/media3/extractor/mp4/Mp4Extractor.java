@@ -538,6 +538,7 @@ public final class Mp4Extractor implements Extractor, SeekMap {
             /* modifyTrackFunction= */ track -> track);
 
     int trackCount = trackSampleTables.size();
+    TrackOutput[] trackOutputs = new TrackOutput[trackCount];
     for (int i = 0; i < trackCount; i++) {
       TrackSampleTable trackSampleTable = trackSampleTables.get(i);
       if (trackSampleTable.sampleCount == 0) {
@@ -547,8 +548,9 @@ public final class Mp4Extractor implements Extractor, SeekMap {
       long trackDurationUs =
           track.durationUs != C.TIME_UNSET ? track.durationUs : trackSampleTable.durationUs;
       durationUs = max(durationUs, trackDurationUs);
+      trackOutputs[i] = extractorOutput.track(track.id, track.type, track.scalableBaseId);
       Mp4Track mp4Track =
-          new Mp4Track(track, trackSampleTable, extractorOutput.track(i, track.type));
+          new Mp4Track(track, trackSampleTable, trackOutputs[i]);
 
       int maxInputSize;
       if (MimeTypes.AUDIO_TRUEHD.equals(track.format.sampleMimeType)) {
@@ -590,6 +592,19 @@ public final class Mp4Extractor implements Extractor, SeekMap {
         firstVideoTrackIndex = tracks.size();
       }
       tracks.add(mp4Track);
+    }
+    // Link scalable bases with their enhancements
+    for (int i = 0; i < trackCount; i++) {
+      Track track = tracks.get(i).track;
+      if (track.scalableBaseId != Track.SCALABLE_BASE_UNSET) {
+        for (int j = 0; j < trackCount; j++) {
+          Track maybeBaseTrack = tracks.get(j).track;
+          if (maybeBaseTrack.id == track.scalableBaseId) {
+            trackOutputs[j].attachEnhancement(trackOutputs[i]);
+            break;
+          }
+        }
+      }
     }
     this.firstVideoTrackIndex = firstVideoTrackIndex;
     this.durationUs = durationUs;
@@ -948,7 +963,8 @@ public final class Mp4Extractor implements Extractor, SeekMap {
         || atom == Atom.TYPE_ftyp
         || atom == Atom.TYPE_udta
         || atom == Atom.TYPE_keys
-        || atom == Atom.TYPE_ilst;
+        || atom == Atom.TYPE_ilst
+        || atom == Atom.TYPE_sbas;
   }
 
   /** Returns whether the extractor should decode a container atom with type {@code atom}. */
@@ -959,7 +975,8 @@ public final class Mp4Extractor implements Extractor, SeekMap {
         || atom == Atom.TYPE_minf
         || atom == Atom.TYPE_stbl
         || atom == Atom.TYPE_edts
-        || atom == Atom.TYPE_meta;
+        || atom == Atom.TYPE_meta
+        || atom == Atom.TYPE_tref;
   }
 
   private static final class Mp4Track {

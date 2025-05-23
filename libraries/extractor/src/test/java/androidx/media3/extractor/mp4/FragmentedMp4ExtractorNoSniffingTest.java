@@ -54,6 +54,7 @@ public class FragmentedMp4ExtractorNoSniffingTest {
             /* sampleTransformation= */ Track.TRANSFORMATION_NONE,
             /* sampleDescriptionEncryptionBoxes= */ null,
             /* nalUnitLengthFieldLength= */ 4,
+            Track.SCALABLE_BASE_UNSET,
             /* editListDurations= */ null,
             /* editListMediaTimes= */ null);
     ExtractorAsserts.assertBehavior(

@@ -62,6 +62,7 @@ import androidx.media3.extractor.SeekMap.SeekPoints;
 import androidx.media3.extractor.SeekMap.Unseekable;
 import androidx.media3.extractor.TrackOutput;
 import androidx.media3.extractor.metadata.icy.IcyHeaders;
+import androidx.media3.extractor.mp4.Track;
 import java.io.IOException;
 import java.io.InterruptedIOException;
 import java.util.Arrays;
@@ -345,7 +346,8 @@ import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
     boolean[] trackEnabledStates = trackState.trackEnabledStates;
     int trackCount = sampleQueues.length;
     for (int i = 0; i < trackCount; i++) {
-      sampleQueues[i].discardTo(positionUs, toKeyframe, trackEnabledStates[i]);
+      boolean stopAtReadPosition = trackEnabledStates[i] || sampleQueues[i].isEnhancement();
+      sampleQueues[i].discardTo(positionUs, toKeyframe, stopAtReadPosition);
     }
   }
 
@@ -691,6 +693,10 @@ import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
   @Override
   public TrackOutput track(int id, int type) {
     return prepareTrackOutput(new TrackId(id, /* isIcyTrack= */ false));
+  }
+
+  public TrackOutput track(int id, int type, int scalableBaseId) {
+    return prepareTrackOutput(new TrackId(id, /* isIcyTrack= */ false, scalableBaseId));
   }
 
   @Override
@@ -1143,11 +1149,17 @@ import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
   private static final class TrackId {
 
     public final int id;
+    public final int scalableBaseId;
     public final boolean isIcyTrack;
 
     public TrackId(int id, boolean isIcyTrack) {
+      this(id, isIcyTrack, Track.SCALABLE_BASE_UNSET);
+    }
+
+    public TrackId(int id, boolean isIcyTrack, int scalableBaseId) {
       this.id = id;
       this.isIcyTrack = isIcyTrack;
+      this.scalableBaseId = scalableBaseId;
     }
 
     @Override
@@ -1159,12 +1171,13 @@ import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
         return false;
       }
       TrackId other = (TrackId) obj;
-      return id == other.id && isIcyTrack == other.isIcyTrack;
+      return id == other.id && isIcyTrack == other.isIcyTrack && scalableBaseId
+          == other.scalableBaseId;
     }
 
     @Override
     public int hashCode() {
-      return 31 * id + (isIcyTrack ? 1 : 0);
+      return 31 * id + (isIcyTrack ? 1 : 0) + 37 * scalableBaseId;
     }
   }
 

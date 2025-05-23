@@ -16,6 +16,7 @@
 package androidx.media3.extractor.mp4;
 
 import static androidx.media3.common.MimeTypes.getMimeTypeFromMp4ObjectType;
+import static androidx.media3.common.util.Assertions.checkArgument;
 import static androidx.media3.common.util.Assertions.checkNotNull;
 import static androidx.media3.common.util.Util.castNonNull;
 import static java.lang.Math.max;
@@ -44,6 +45,7 @@ import androidx.media3.extractor.DolbyVisionConfig;
 import androidx.media3.extractor.ExtractorUtil;
 import androidx.media3.extractor.GaplessInfoHolder;
 import androidx.media3.extractor.HevcConfig;
+import androidx.media3.extractor.LcevcConfig;
 import androidx.media3.extractor.OpusUtil;
 import androidx.media3.extractor.VorbisUtil;
 import androidx.media3.extractor.metadata.mp4.SmtaMetadataEntry;
@@ -153,6 +155,7 @@ import java.util.List;
       TrackSampleTable trackSampleTable = parseStbl(track, stblAtom, gaplessInfoHolder);
       trackSampleTables.add(trackSampleTable);
     }
+    maybeAggregateEnhancementMetadata(trackSampleTables);
     return trackSampleTables;
   }
 
@@ -319,6 +322,16 @@ import java.util.List;
       return null;
     }
 
+    int scalableBaseId = Track.SCALABLE_BASE_UNSET;
+    @Nullable Atom.ContainerAtom tref = trak.getContainerAtomOfType(Atom.TYPE_tref);
+    if (tref != null) {
+      @Nullable Atom.LeafAtom sbas = tref.getLeafAtomOfType(Atom.TYPE_sbas);
+      if (sbas != null) {
+        sbas.data.skipBytes(Atom.HEADER_SIZE);
+        scalableBaseId = sbas.data.readInt();
+      }
+    }
+
     TkhdData tkhdData = parseTkhd(checkNotNull(trak.getLeafAtomOfType(Atom.TYPE_tkhd)).data);
     if (duration == C.TIME_UNSET) {
       duration = tkhdData.duration;
@@ -374,8 +387,45 @@ import java.util.List;
             stsdData.requiredSampleTransformation,
             stsdData.trackEncryptionBoxes,
             stsdData.nalUnitLengthFieldLength,
+            scalableBaseId,
             editListDurations,
             editListMediaTimes);
+  }
+
+  private static void maybeAggregateEnhancementMetadata(List<TrackSampleTable> trackSampleTables) {
+    @Nullable TrackSampleTable enhancementSampleTable = null;
+    @Nullable TrackSampleTable baseSampleTable = null;
+    // Look for enhancement
+    for (TrackSampleTable trackSampleTable : trackSampleTables) {
+      if (trackSampleTable.track.scalableBaseId != Track.SCALABLE_BASE_UNSET) {
+        enhancementSampleTable = trackSampleTable;
+        break;
+      }
+    }
+    if (enhancementSampleTable == null) {
+      return;
+    }
+    // Look for base
+    for (TrackSampleTable trackSampleTable : trackSampleTables) {
+      if (trackSampleTable.track.id == enhancementSampleTable.track.scalableBaseId) {
+        baseSampleTable = trackSampleTable;
+        break;
+      }
+    }
+    checkArgument(baseSampleTable != null, "Signalled scalable base track with id = "
+        + enhancementSampleTable.track.scalableBaseId + " not found");
+    Log.i(TAG, "Track id = " + enhancementSampleTable.track.id + " is enhancement of track id = " + baseSampleTable.track.id);
+    TrackSampleTable aggregateBaseSampleTable = new TrackSampleTable(
+        baseSampleTable.track,
+        baseSampleTable.offsets,
+        baseSampleTable.sizes,
+        baseSampleTable.maximumSize + enhancementSampleTable.maximumSize,
+        baseSampleTable.timestampsUs,
+        baseSampleTable.flags,
+        baseSampleTable.durationUs);
+    Log.d(TAG, "Input buffers: base maximumSize = " + baseSampleTable.maximumSize + ", enhancement maximumSize = " + enhancementSampleTable.maximumSize);
+    int baseSampleTableIndex = trackSampleTables.indexOf(baseSampleTable);
+    trackSampleTables.set(baseSampleTableIndex, aggregateBaseSampleTable);
   }
 
   /**
@@ -1007,7 +1057,8 @@ import java.util.List;
           || childAtomType == Atom.TYPE_dvav
           || childAtomType == Atom.TYPE_dva1
           || childAtomType == Atom.TYPE_dvhe
-          || childAtomType == Atom.TYPE_dvh1) {
+          || childAtomType == Atom.TYPE_dvh1
+          || childAtomType == Atom.TYPE_lvc1) {
         parseVideoSampleEntry(
             stsd,
             childAtomType,
@@ -1229,6 +1280,15 @@ import java.util.List;
         colorTransfer = hevcConfig.colorTransfer;
         bitdepthLuma = hevcConfig.bitdepthLuma;
         bitdepthChroma = hevcConfig.bitdepthChroma;
+      } else if (childAtomType == Atom.TYPE_lvcC) {
+        ExtractorUtil.checkContainerInput(mimeType == null, /* message= */ null);
+        mimeType = MimeTypes.VIDEO_LCEVC;
+        parent.setPosition(childStartPosition + Atom.HEADER_SIZE);
+        LcevcConfig lcevcConfig = LcevcConfig.parse(parent);
+        out.nalUnitLengthFieldLength = lcevcConfig.nalUnitLengthFieldLength;
+        codecs = lcevcConfig.codecs;
+        bitdepthLuma = lcevcConfig.bitdepthLuma;
+        bitdepthChroma = lcevcConfig.bitdepthChroma;
       } else if (childAtomType == Atom.TYPE_dvcC || childAtomType == Atom.TYPE_dvvC) {
         @Nullable DolbyVisionConfig dolbyVisionConfig = DolbyVisionConfig.parse(parent);
         if (dolbyVisionConfig != null) {

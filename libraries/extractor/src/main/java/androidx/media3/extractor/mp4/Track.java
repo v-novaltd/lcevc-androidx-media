@@ -47,6 +47,9 @@ public final class Track {
   /** A transformation for caption samples in cdat atoms. */
   public static final int TRANSFORMATION_CEA608_CDAT = 1;
 
+  /** A track without a scalable base set. */
+  public static final int SCALABLE_BASE_UNSET = -1;
+
   /** The track identifier. */
   public final int id;
 
@@ -85,6 +88,9 @@ public final class Track {
    */
   public final int nalUnitLengthFieldLength;
 
+  /** The identifier of the scalable base track. */
+  public final int scalableBaseId;
+
   @Nullable private final TrackEncryptionBox[] sampleDescriptionEncryptionBoxes;
 
   public Track(
@@ -97,6 +103,7 @@ public final class Track {
       @Transformation int sampleTransformation,
       @Nullable TrackEncryptionBox[] sampleDescriptionEncryptionBoxes,
       int nalUnitLengthFieldLength,
+      int scalableBaseId,
       @Nullable long[] editListDurations,
       @Nullable long[] editListMediaTimes) {
     this.id = id;
@@ -108,6 +115,7 @@ public final class Track {
     this.sampleTransformation = sampleTransformation;
     this.sampleDescriptionEncryptionBoxes = sampleDescriptionEncryptionBoxes;
     this.nalUnitLengthFieldLength = nalUnitLengthFieldLength;
+    this.scalableBaseId = scalableBaseId;
     this.editListDurations = editListDurations;
     this.editListMediaTimes = editListMediaTimes;
   }
@@ -137,6 +145,7 @@ public final class Track {
         sampleTransformation,
         sampleDescriptionEncryptionBoxes,
         nalUnitLengthFieldLength,
+        scalableBaseId,
         editListDurations,
         editListMediaTimes);
   }

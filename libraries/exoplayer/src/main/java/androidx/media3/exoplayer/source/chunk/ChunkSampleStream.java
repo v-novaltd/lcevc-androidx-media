@@ -142,19 +142,23 @@ public class ChunkSampleStream<T extends ChunkSource>
     int embeddedTrackCount = this.embeddedTrackTypes.length;
     embeddedSampleQueues = new SampleQueue[embeddedTrackCount];
     embeddedTracksSelected = new boolean[embeddedTrackCount];
-    int[] trackTypes = new int[1 + embeddedTrackCount];
-    SampleQueue[] sampleQueues = new SampleQueue[1 + embeddedTrackCount];
+    int[] trackTypes = new int[2 + embeddedTrackCount];
+    SampleQueue[] sampleQueues = new SampleQueue[2 + embeddedTrackCount];
 
     primarySampleQueue =
         SampleQueue.createWithDrm(allocator, drmSessionManager, drmEventDispatcher);
     trackTypes[0] = primaryTrackType;
     sampleQueues[0] = primarySampleQueue;
 
+    // Allocate possible enhancement sample queue
+    trackTypes[1] = primaryTrackType;
+    sampleQueues[1] = SampleQueue.createWithoutDrm(allocator);
+
     for (int i = 0; i < embeddedTrackCount; i++) {
       SampleQueue sampleQueue = SampleQueue.createWithoutDrm(allocator);
       embeddedSampleQueues[i] = sampleQueue;
-      sampleQueues[i + 1] = sampleQueue;
-      trackTypes[i + 1] = this.embeddedTrackTypes[i];
+      sampleQueues[2 + i] = sampleQueue;
+      trackTypes[2 + i] = this.embeddedTrackTypes[i];
     }
 
     chunkOutput = new BaseMediaChunkOutput(trackTypes, sampleQueues);

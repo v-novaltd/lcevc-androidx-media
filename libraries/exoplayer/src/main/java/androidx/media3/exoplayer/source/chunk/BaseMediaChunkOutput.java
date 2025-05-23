@@ -33,6 +33,7 @@ public final class BaseMediaChunkOutput implements TrackOutputProvider {
   private static final String TAG = "BaseMediaChunkOutput";
 
   private final @C.TrackType int[] trackTypes;
+  private final int[] trackIds;
   private final SampleQueue[] sampleQueues;
 
   /**
@@ -41,6 +42,10 @@ public final class BaseMediaChunkOutput implements TrackOutputProvider {
    */
   public BaseMediaChunkOutput(int[] trackTypes, SampleQueue[] sampleQueues) {
     this.trackTypes = trackTypes;
+    this.trackIds = new int[trackTypes.length];
+    for (int i = 0; i < trackTypes.length; i++) {
+      this.trackIds[i] = Integer.MIN_VALUE;
+    }
     this.sampleQueues = sampleQueues;
   }
 
@@ -48,7 +53,12 @@ public final class BaseMediaChunkOutput implements TrackOutputProvider {
   public TrackOutput track(int id, @C.TrackType int type) {
     for (int i = 0; i < trackTypes.length; i++) {
       if (type == trackTypes[i]) {
-        return sampleQueues[i];
+        if (trackIds[i] == Integer.MIN_VALUE) {
+          trackIds[i] = id;
+          return sampleQueues[i];
+        } else if (trackIds[i] == id) {
+          return sampleQueues[i];
+        }
       }
     }
     Log.e(TAG, "Unmatched track of type: " + type);

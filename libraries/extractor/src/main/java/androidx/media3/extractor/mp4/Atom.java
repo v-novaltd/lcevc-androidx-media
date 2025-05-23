@@ -61,6 +61,12 @@ import java.util.List;
   public static final int TYPE_hvcC = 0x68766343;
 
   @SuppressWarnings("ConstantCaseForConstants")
+  public static final int TYPE_lvc1 = 0x6C766331;
+
+  @SuppressWarnings("ConstantCaseForConstants")
+  public static final int TYPE_lvcC = 0x6C766343;
+
+  @SuppressWarnings("ConstantCaseForConstants")
   public static final int TYPE_vp08 = 0x76703038;
 
   @SuppressWarnings("ConstantCaseForConstants")
@@ -208,6 +214,12 @@ import java.util.List;
 
   @SuppressWarnings("ConstantCaseForConstants")
   public static final int TYPE_mdia = 0x6d646961;
+
+  @SuppressWarnings("ConstantCaseForConstants")
+  public static final int TYPE_tref = 0x74726566;
+
+  @SuppressWarnings("ConstantCaseForConstants")
+  public static final int TYPE_sbas = 0x73626173;
 
   @SuppressWarnings("ConstantCaseForConstants")
   public static final int TYPE_minf = 0x6d696e66;

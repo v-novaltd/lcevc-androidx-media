@@ -1,6 +1,13 @@
 # Release notes LCEVC
 
-## 2024-02-17
+## 2025-04-03
+*   Add support for HLS fMP4 dual track delivery
+*   Add support for DASH dual track non-scalable delivery
+
+## 2025-03-12
+*   Add support for LCEVC as separate track in MP4 and fragmented MP4
+
+## 2025-02-17
 *   Use lcevc-dil v3.3.5.
 *   Update LCEVC README
 *   Update README

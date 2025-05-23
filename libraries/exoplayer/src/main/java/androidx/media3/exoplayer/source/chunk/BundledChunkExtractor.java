@@ -40,6 +40,7 @@ import androidx.media3.extractor.mp4.FragmentedMp4Extractor;
 import androidx.media3.extractor.text.SubtitleParser;
 import androidx.media3.extractor.text.SubtitleTranscodingExtractor;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
 
@@ -207,11 +208,14 @@ public final class BundledChunkExtractor implements ExtractorOutput, ChunkExtrac
 
   @Override
   public void endTracks() {
-    Format[] sampleFormats = new Format[bindingTrackOutputs.size()];
+    List<Format> sampleFormats = new ArrayList<>();
     for (int i = 0; i < bindingTrackOutputs.size(); i++) {
-      sampleFormats[i] = Assertions.checkStateNotNull(bindingTrackOutputs.valueAt(i).sampleFormat);
+      BundledChunkExtractor.BindingTrackOutput trackOutput = bindingTrackOutputs.valueAt(i);
+      if (!trackOutput.isEnhancement() && trackOutput.sampleFormat != null) {
+        sampleFormats.add(trackOutput.sampleFormat);
+      }
     }
-    this.sampleFormats = sampleFormats;
+    this.sampleFormats = sampleFormats.toArray(new Format[0]);
   }
 
   @Override
@@ -281,6 +285,16 @@ public final class BundledChunkExtractor implements ExtractorOutput, ChunkExtrac
         trackOutput = fakeTrackOutput;
       }
       castNonNull(trackOutput).sampleMetadata(timeUs, flags, size, offset, cryptoData);
+    }
+
+    @Override
+    public final void attachEnhancement(TrackOutput enhancement) {
+      castNonNull(trackOutput).attachEnhancement(((BindingTrackOutput)(castNonNull(enhancement))).trackOutput);
+    }
+
+    @Override
+    public final boolean isEnhancement() {
+      return castNonNull(trackOutput).isEnhancement();
     }
   }
 }

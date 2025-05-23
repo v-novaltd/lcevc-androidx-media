@@ -79,6 +79,8 @@ public class SampleQueue implements TrackOutput {
 
   @Nullable private Format downstreamFormat;
   @Nullable private DrmSession currentDrmSession;
+  @Nullable private SampleQueue enhancedSampleQueue;
+  private boolean isEnhancement;
 
   private int capacity;
   private long[] sourceIds;
@@ -108,6 +110,7 @@ public class SampleQueue implements TrackOutput {
 
   private long sampleOffsetUs;
   private boolean pendingSplice;
+  private FormatHolder peekFormatHolder;
 
   /**
    * Creates a sample queue without DRM resource management.
@@ -182,6 +185,7 @@ public class SampleQueue implements TrackOutput {
     upstreamFormatRequired = true;
     upstreamKeyframeRequired = true;
     allSamplesAreSyncSamples = true;
+    peekFormatHolder = new FormatHolder();
   }
 
   // Called by the consuming thread when there is no loading thread.
@@ -225,6 +229,19 @@ public class SampleQueue implements TrackOutput {
       upstreamFormatRequired = true;
       allSamplesAreSyncSamples = true;
     }
+    enhancedSampleQueue = null;
+    isEnhancement = false;
+  }
+
+  @Override
+  public final void attachEnhancement(TrackOutput enhancedSampleQueue) {
+    this.enhancedSampleQueue = (SampleQueue)enhancedSampleQueue;
+    this.enhancedSampleQueue.isEnhancement = true;
+  }
+
+  @Override
+  public final boolean isEnhancement() {
+    return this.isEnhancement;
   }
 
   /**
@@ -388,6 +405,9 @@ public class SampleQueue implements TrackOutput {
   @SuppressWarnings("ReferenceEquality") // See comments in setUpstreamFormat
   @CallSuper
   public synchronized boolean isReady(boolean loadingFinished) {
+    if (enhancedSampleQueue != null && !enhancedSampleQueue.isReady(loadingFinished)) {
+      return false;
+    }
     if (!hasNextSample()) {
       return loadingFinished
           || isLastSampleQueued
@@ -419,30 +439,35 @@ public class SampleQueue implements TrackOutput {
    *     flags are populated if this exception is thrown, but the read position is not advanced.
    */
   @CallSuper
-  public int read(
+  public synchronized int read(
       FormatHolder formatHolder,
       DecoderInputBuffer buffer,
       @ReadFlags int readFlags,
       boolean loadingFinished) {
-    int result =
-        peekSampleMetadata(
+    int result = C.RESULT_BUFFER_READ;
+    if (enhancedSampleQueue != null) {
+      result = enhancedSampleQueue.peekSampleReadResult(
+          buffer,
+          false,
+          loadingFinished);
+    }
+    if (result != C.RESULT_BUFFER_READ) {
+      return C.RESULT_NOTHING_READ;
+    }
+    long enhancedBufferTimeUs = buffer.timeUs;
+    result = peekSampleMetadata(
             formatHolder,
             buffer,
             /* formatRequired= */ (readFlags & FLAG_REQUIRE_FORMAT) != 0,
-            loadingFinished,
-            extrasHolder);
+            loadingFinished);
     if (result == C.RESULT_BUFFER_READ && !buffer.isEndOfStream()) {
-      boolean peek = (readFlags & FLAG_PEEK) != 0;
-      if ((readFlags & FLAG_OMIT_SAMPLE_DATA) == 0) {
-        if (peek) {
-          sampleDataQueue.peekToBuffer(buffer, extrasHolder);
-        } else {
-          sampleDataQueue.readToBuffer(buffer, extrasHolder);
-        }
+      checkArgument(enhancedSampleQueue == null || buffer.timeUs == enhancedBufferTimeUs,
+          "base timeUs " + buffer.timeUs + " != enhancement timeUs " + enhancedBufferTimeUs);
+
+      if (enhancedSampleQueue != null) {
+        enhancedSampleQueue.readSampleQueue(buffer, readFlags);
       }
-      if (!peek) {
-        readPosition++;
-      }
+      readSampleQueue(buffer, readFlags);
     }
     return result;
   }
@@ -475,6 +500,9 @@ public class SampleQueue implements TrackOutput {
    * @return Whether the seek was successful.
    */
   public final synchronized boolean seekTo(long timeUs, boolean allowTimeBeyondBuffer) {
+    if (enhancedSampleQueue != null) {
+      enhancedSampleQueue.seekTo(timeUs, allowTimeBeyondBuffer);
+    }
     rewind();
     int relativeReadIndex = getRelativeIndex(readPosition);
     if (!hasNextSample()
@@ -528,6 +556,9 @@ public class SampleQueue implements TrackOutput {
    *     most {@link #getWriteIndex()} - {@link #getReadIndex()}.
    */
   public final synchronized void skip(int count) {
+    if (enhancedSampleQueue != null) {
+      enhancedSampleQueue.skip(count);
+    }
     checkArgument(count >= 0 && readPosition + count <= length);
     readPosition += count;
   }
@@ -655,6 +686,25 @@ public class SampleQueue implements TrackOutput {
     commitSample(timeUs, flags, absoluteOffset, size, cryptoData);
   }
 
+  public int peekSampleReadResult(
+      DecoderInputBuffer buffer, boolean formatRequired, boolean loadingFinished) {
+    return peekSampleMetadata(peekFormatHolder, buffer, formatRequired, loadingFinished);
+  }
+
+  public synchronized void readSampleQueue(DecoderInputBuffer buffer, @ReadFlags int readFlags) {
+    boolean peek = (readFlags & FLAG_PEEK) != 0;
+    if ((readFlags & FLAG_OMIT_SAMPLE_DATA) == 0) {
+      if (peek) {
+        sampleDataQueue.peekToBuffer(buffer, extrasHolder);
+      } else {
+        sampleDataQueue.readToBuffer(buffer, extrasHolder);
+      }
+    }
+    if (!peek) {
+      readPosition++;
+    }
+  }
+
   /**
    * Invalidates the last upstream format adjustment. {@link #getAdjustedUpstreamFormat(Format)}
    * will be called to adjust the upstream {@link Format} again before the next sample is queued.
@@ -700,8 +750,7 @@ public class SampleQueue implements TrackOutput {
       FormatHolder formatHolder,
       DecoderInputBuffer buffer,
       boolean formatRequired,
-      boolean loadingFinished,
-      SampleExtrasHolder extrasHolder) {
+      boolean loadingFinished) {
     buffer.waitingForKeys = false;
     if (!hasNextSample()) {
       if (loadingFinished || isLastSampleQueued) {

@@ -293,7 +293,7 @@ public class FragmentedMp4Extractor implements Extractor {
     if (sideloadedTrack != null) {
       TrackBundle bundle =
           new TrackBundle(
-              output.track(0, sideloadedTrack.type),
+              output.track(0, sideloadedTrack.type, sideloadedTrack.scalableBaseId),
               new TrackSampleTable(
                   sideloadedTrack,
                   /* offsets= */ new long[0],
@@ -530,16 +530,31 @@ public class FragmentedMp4Extractor implements Extractor {
     int trackCount = sampleTables.size();
     if (trackBundles.size() == 0) {
       // We need to create the track bundles.
+      TrackOutput[] trackOutputs = new TrackOutput[trackCount];
       for (int i = 0; i < trackCount; i++) {
         TrackSampleTable sampleTable = sampleTables.get(i);
         Track track = sampleTable.track;
+        trackOutputs[i] = extractorOutput.track(track.id, track.type, track.scalableBaseId);
         TrackBundle trackBundle =
             new TrackBundle(
-                extractorOutput.track(i, track.type),
+                trackOutputs[i],
                 sampleTable,
                 getDefaultSampleValues(defaultSampleValuesArray, track.id));
         trackBundles.put(track.id, trackBundle);
         durationUs = max(durationUs, track.durationUs);
+      }
+      // Link scalable bases with their enhancements
+      for (int i = 0; i < trackCount; i++) {
+        Track track = sampleTables.get(i).track;
+        if (track.scalableBaseId != Track.SCALABLE_BASE_UNSET) {
+          for (int j = 0; j < trackCount; j++) {
+            Track maybeBaseTrack = sampleTables.get(j).track;
+            if (maybeBaseTrack.id == track.scalableBaseId) {
+              trackOutputs[j].attachEnhancement(trackOutputs[i]);
+              break;
+            }
+          }
+        }
       }
       extractorOutput.endTracks();
     } else {
@@ -1607,7 +1622,8 @@ public class FragmentedMp4Extractor implements Extractor {
         || atom == Atom.TYPE_sgpd
         || atom == Atom.TYPE_elst
         || atom == Atom.TYPE_mehd
-        || atom == Atom.TYPE_emsg;
+        || atom == Atom.TYPE_emsg
+        || atom == Atom.TYPE_sbas;
   }
 
   /** Returns whether the extractor should decode a container atom with type {@code atom}. */
@@ -1620,7 +1636,8 @@ public class FragmentedMp4Extractor implements Extractor {
         || atom == Atom.TYPE_moof
         || atom == Atom.TYPE_traf
         || atom == Atom.TYPE_mvex
-        || atom == Atom.TYPE_edts;
+        || atom == Atom.TYPE_edts
+        || atom == Atom.TYPE_tref;
   }
 
   /** Holds data corresponding to a metadata sample. */

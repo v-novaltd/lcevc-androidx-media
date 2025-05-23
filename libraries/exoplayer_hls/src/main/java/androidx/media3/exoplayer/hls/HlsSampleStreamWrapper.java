@@ -15,6 +15,7 @@
  */
 package androidx.media3.exoplayer.hls;
 
+import static androidx.media3.common.util.Assertions.checkNotNull;
 import static androidx.media3.exoplayer.hls.HlsChunkSource.CHUNK_PUBLICATION_STATE_PUBLISHED;
 import static androidx.media3.exoplayer.hls.HlsChunkSource.CHUNK_PUBLICATION_STATE_REMOVED;
 import static androidx.media3.exoplayer.trackselection.TrackSelectionUtil.createFallbackOptions;
@@ -23,6 +24,7 @@ import static java.lang.Math.min;
 
 import android.net.Uri;
 import android.os.Handler;
+import android.util.Pair;
 import android.util.SparseIntArray;
 import androidx.annotation.Nullable;
 import androidx.media3.common.C;
@@ -71,6 +73,7 @@ import androidx.media3.extractor.TrackOutput;
 import androidx.media3.extractor.metadata.emsg.EventMessage;
 import androidx.media3.extractor.metadata.emsg.EventMessageDecoder;
 import androidx.media3.extractor.metadata.id3.PrivFrame;
+import androidx.media3.extractor.mp4.Track;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Iterables;
 import com.google.common.primitives.Ints;
@@ -151,8 +154,7 @@ import org.checkerframework.checker.nullness.qual.RequiresNonNull;
 
   @Nullable private Chunk loadingChunk;
   private HlsSampleQueue[] sampleQueues;
-  private int[] sampleQueueTrackIds;
-  private Set<Integer> sampleQueueMappingDoneByType;
+  private Pair<Integer, Integer>[] sampleQueueTrackIds;
   private SparseIntArray sampleQueueIndicesByType;
   private @MonotonicNonNull TrackOutput emsgUnwrappingTrackOutput;
   private int primarySampleQueueType;
@@ -236,8 +238,7 @@ import org.checkerframework.checker.nullness.qual.RequiresNonNull;
     this.metadataType = metadataType;
     loader = new Loader("Loader:HlsSampleStreamWrapper");
     nextChunkHolder = new HlsChunkSource.HlsChunkHolder();
-    sampleQueueTrackIds = new int[0];
-    sampleQueueMappingDoneByType = new HashSet<>(MAPPABLE_TYPES.size());
+    sampleQueueTrackIds = new Pair[0];
     sampleQueueIndicesByType = new SparseIntArray(MAPPABLE_TYPES.size());
     sampleQueues = new HlsSampleQueue[0];
     sampleQueueIsAudioVideoFlags = new boolean[0];
@@ -476,7 +477,8 @@ import org.checkerframework.checker.nullness.qual.RequiresNonNull;
     }
     int sampleQueueCount = sampleQueues.length;
     for (int i = 0; i < sampleQueueCount; i++) {
-      sampleQueues[i].discardTo(positionUs, toKeyframe, sampleQueuesEnabledStates[i]);
+      boolean stopAtReadPosition = sampleQueuesEnabledStates[i] || sampleQueues[i].isEnhancement();
+      sampleQueues[i].discardTo(positionUs, toKeyframe, stopAtReadPosition);
     }
   }
 
@@ -1057,13 +1059,18 @@ import org.checkerframework.checker.nullness.qual.RequiresNonNull;
 
   @Override
   public TrackOutput track(int id, int type) {
+    return track(id, type, Track.SCALABLE_BASE_UNSET);
+  }
+
+  @Override
+  public TrackOutput track(int id, int type, int scalableBaseId) {
     @Nullable TrackOutput trackOutput = null;
-    if (MAPPABLE_TYPES.contains(type)) {
+    if (MAPPABLE_TYPES.contains(type) && scalableBaseId == Track.SCALABLE_BASE_UNSET) {
       // Track types in MAPPABLE_TYPES are handled manually to ignore IDs.
       trackOutput = getMappedTrackOutput(id, type);
     } else /* non-mappable type track */ {
       for (int i = 0; i < sampleQueues.length; i++) {
-        if (sampleQueueTrackIds[i] == id) {
+        if (sampleQueueTrackIds[i].first == id) {
           trackOutput = sampleQueues[i];
           break;
         }
@@ -1075,7 +1082,7 @@ import org.checkerframework.checker.nullness.qual.RequiresNonNull;
         return createFakeTrackOutput(id, type);
       } else {
         // The relevant SampleQueue hasn't been constructed yet - so construct it.
-        trackOutput = createSampleQueue(id, type);
+        trackOutput = createSampleQueue(id, type, scalableBaseId);
       }
     }
 
@@ -1111,15 +1118,12 @@ import org.checkerframework.checker.nullness.qual.RequiresNonNull;
       return null;
     }
 
-    if (sampleQueueMappingDoneByType.add(type)) {
-      sampleQueueTrackIds[sampleQueueIndex] = id;
-    }
-    return sampleQueueTrackIds[sampleQueueIndex] == id
+    return sampleQueueTrackIds[sampleQueueIndex].first == id
         ? sampleQueues[sampleQueueIndex]
         : createFakeTrackOutput(id, type);
   }
 
-  private SampleQueue createSampleQueue(int id, int type) {
+  private SampleQueue createSampleQueue(int id, int type, int scalableBaseId) {
     int trackCount = sampleQueues.length;
 
     boolean isAudioVideo = type == C.TRACK_TYPE_AUDIO || type == C.TRACK_TYPE_VIDEO;
@@ -1135,13 +1139,14 @@ import org.checkerframework.checker.nullness.qual.RequiresNonNull;
     }
     sampleQueue.setUpstreamFormatChangeListener(this);
     sampleQueueTrackIds = Arrays.copyOf(sampleQueueTrackIds, trackCount + 1);
-    sampleQueueTrackIds[trackCount] = id;
+    sampleQueueTrackIds[trackCount] = new Pair(id, scalableBaseId);
     sampleQueues = Util.nullSafeArrayAppend(sampleQueues, sampleQueue);
     sampleQueueIsAudioVideoFlags = Arrays.copyOf(sampleQueueIsAudioVideoFlags, trackCount + 1);
     sampleQueueIsAudioVideoFlags[trackCount] = isAudioVideo;
     haveAudioVideoSampleQueues |= sampleQueueIsAudioVideoFlags[trackCount];
-    sampleQueueMappingDoneByType.add(type);
-    sampleQueueIndicesByType.append(type, trackCount);
+    if (scalableBaseId == Track.SCALABLE_BASE_UNSET) {
+      sampleQueueIndicesByType.append(type, trackCount);
+    }
     if (getTrackTypeScore(type) > getTrackTypeScore(primarySampleQueueType)) {
       primarySampleQueueIndex = trackCount;
       primarySampleQueueType = type;
@@ -1172,7 +1177,6 @@ import org.checkerframework.checker.nullness.qual.RequiresNonNull;
 
   /** Called when an {@link HlsMediaChunk} starts extracting media with a new {@link Extractor}. */
   public void onNewExtractor() {
-    sampleQueueMappingDoneByType.clear();
   }
 
   /**
