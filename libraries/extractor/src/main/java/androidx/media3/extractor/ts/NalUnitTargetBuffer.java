@@ -22,7 +22,7 @@ import java.util.Arrays;
  * A buffer that fills itself with data corresponding to a specific NAL unit, as it is encountered
  * in the stream.
  */
-/* package */ final class NalUnitTargetBuffer {
+public final class NalUnitTargetBuffer {
 
   private final int targetType;
 
@@ -38,6 +38,16 @@ import java.util.Arrays;
     // Initialize data with a start code in the first three bytes.
     nalData = new byte[3 + initialCapacity];
     nalData[2] = 1;
+  }
+
+  public NalUnitTargetBuffer(int nalUnitType, byte[] data, int positionNalUnitDataPostStartCode, int length) {
+    targetType = nalUnitType;
+    isFilling = false;
+    isCompleted = true;
+    nalData = new byte[3 + length];
+    nalData[2] = 1;
+    System.arraycopy(data, positionNalUnitDataPostStartCode, nalData, 3, length);
+    nalLength = nalData.length;
   }
 
   /** Resets the buffer, clearing any data that it holds. */

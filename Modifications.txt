@@ -13,6 +13,9 @@ demos/main/src/main/AndroidManifest.xml
 demos/main/src/main/java/androidx/media3/demo/main/SampleChooserActivity.java
 demos/main/src/mainLcevc/java/androidx/media3/demo/main/DemoUtil.java
 libraries/common/src/main/java/androidx/media3/common/MimeTypes.java
+libraries/common/src/main/java/androidx/media3/common/util/CodecSpecificDataUtil.java
+libraries/container/src/main/java/androidx/media3/container/NalUnitUtil.java
+libraries/container/src/main/java/androidx/media3/container/ParsableNalUnitBitArray.java
 libraries/exoplayer/build.gradle
 libraries/exoplayer/src/main/java/androidx/media3/exoplayer/source/ProgressiveMediaPeriod.java
 libraries/exoplayer/src/main/java/androidx/media3/exoplayer/source/SampleQueue.java
@@ -30,6 +33,10 @@ libraries/extractor/src/main/java/androidx/media3/extractor/mp4/Atom.java
 libraries/extractor/src/main/java/androidx/media3/extractor/mp4/AtomParsers.java
 libraries/extractor/src/main/java/androidx/media3/extractor/mp4/FragmentedMp4Extractor.java
 libraries/extractor/src/main/java/androidx/media3/extractor/mp4/Mp4Extractor.java
+libraries/extractor/src/main/java/androidx/media3/extractor/mp4/Sniffer.java
 libraries/extractor/src/main/java/androidx/media3/extractor/mp4/Track.java
+libraries/extractor/src/main/java/androidx/media3/extractor/ts/DefaultTsPayloadReaderFactory.java
+libraries/extractor/src/main/java/androidx/media3/extractor/ts/NalUnitTargetBuffer.java
+libraries/extractor/src/main/java/androidx/media3/extractor/ts/TsExtractor.java
 libraries/extractor/src/test/java/androidx/media3/extractor/mp4/FragmentedMp4ExtractorNoSniffingTest.java
 missing_aar_type_workaround.gradle

@@ -45,6 +45,7 @@ import androidx.media3.extractor.DolbyVisionConfig;
 import androidx.media3.extractor.ExtractorUtil;
 import androidx.media3.extractor.GaplessInfoHolder;
 import androidx.media3.extractor.HevcConfig;
+import androidx.media3.extractor.VvcConfig;
 import androidx.media3.extractor.LcevcConfig;
 import androidx.media3.extractor.OpusUtil;
 import androidx.media3.extractor.VorbisUtil;
@@ -1049,6 +1050,8 @@ import java.util.List;
           || childAtomType == Atom.TYPE_mp4v
           || childAtomType == Atom.TYPE_hvc1
           || childAtomType == Atom.TYPE_hev1
+          || childAtomType == Atom.TYPE_vvc1
+          || childAtomType == Atom.TYPE_vvi1
           || childAtomType == Atom.TYPE_s263
           || childAtomType == Atom.TYPE_H263
           || childAtomType == Atom.TYPE_vp08
@@ -1280,6 +1283,21 @@ import java.util.List;
         colorTransfer = hevcConfig.colorTransfer;
         bitdepthLuma = hevcConfig.bitdepthLuma;
         bitdepthChroma = hevcConfig.bitdepthChroma;
+        } else if (childAtomType == Atom.TYPE_vvcC) {
+          ExtractorUtil.checkContainerInput(mimeType == null, /* message= */ null);
+          mimeType = MimeTypes.VIDEO_H266;
+          parent.setPosition(childStartPosition + Atom.HEADER_SIZE);
+          if (childAtomSize > Atom.HEADER_SIZE) {
+              VvcConfig vvcConfig = VvcConfig.parse(parent);
+              initializationData = vvcConfig.initializationData;
+              out.nalUnitLengthFieldLength = vvcConfig.nalUnitLengthFieldLength;
+              if (!pixelWidthHeightRatioFromPasp) {
+                  pixelWidthHeightRatio = vvcConfig.pixelWidthAspectRatio;
+              }
+              codecs = vvcConfig.codecs;
+              bitdepthLuma = vvcConfig.bitdepthLuma;
+              bitdepthChroma = vvcConfig.bitdepthChroma;
+          }
       } else if (childAtomType == Atom.TYPE_lvcC) {
         ExtractorUtil.checkContainerInput(mimeType == null, /* message= */ null);
         mimeType = MimeTypes.VIDEO_LCEVC;

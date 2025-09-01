@@ -1,5 +1,8 @@
 # Release notes LCEVC
 
+## 2025-07-09
+*   Add support for VVC (H.266)
+
 ## 2025-04-03
 *   Add support for HLS fMP4 dual track delivery
 *   Add support for DASH dual track non-scalable delivery

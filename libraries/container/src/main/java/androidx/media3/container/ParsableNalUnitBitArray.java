@@ -92,6 +92,16 @@ public final class ParsableNalUnitBitArray {
     assertValidOffset();
   }
 
+  /** Skips bits to the next byte aligned position. */
+  public void skipToByteAligned() {
+    if (bitOffset != 0) {
+      bitOffset = 0;
+      byteOffset += shouldSkipByte(byteOffset + 1) ? 2 : 1;
+      assertValidOffset();
+    }
+  }
+
+
   /**
    * Returns whether it's possible to read {@code n} bits starting from the current offset. The
    * offset is not modified.

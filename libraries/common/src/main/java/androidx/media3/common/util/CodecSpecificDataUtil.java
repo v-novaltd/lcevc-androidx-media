@@ -205,6 +205,21 @@ public final class CodecSpecificDataUtil {
   }
 
   /**
+   * Builds an RFC 6381 VVC codecs string using the provided parameters.
+   *
+   * @param generalProfileIdc The general_profile_idc as found in SPS.
+   * @param generalTierFlag The general_tier_flag as found in SPS.
+   * @param opLevelIdc The op_level_idc as found in SPS.
+   * @return An RFC 6381 VVC codec string built using the provided parameters
+   */
+  public static String buildVvcCodecString(
+      int generalProfileIdc, boolean generalTierFlag, int opLevelIdc) {
+    // Assuming no constraints ("QA" for const part) as per M.4 of ISO/IEC 23000-19, Table M.2
+    return String.format(
+        "vvc1.%d.%s%d.CQA", generalProfileIdc, generalTierFlag ? "H" : "L", opLevelIdc);
+  }
+
+  /**
    * Constructs a NAL unit consisting of the NAL start code followed by the specified data.
    *
    * @param data An array containing the data that should follow the NAL start code.

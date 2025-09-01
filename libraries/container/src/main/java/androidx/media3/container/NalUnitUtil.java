@@ -61,6 +61,7 @@ public final class NalUnitUtil {
     public final int profileIdc;
     public final int constraintsFlagsAndReservedZero2Bits;
     public final int levelIdc;
+    public final boolean tierFlag;
     public final int seqParameterSetId;
     public final int maxNumRefFrames;
     public final int width;
@@ -82,6 +83,7 @@ public final class NalUnitUtil {
         int profileIdc,
         int constraintsFlagsAndReservedZero2Bits,
         int levelIdc,
+        boolean tierFlag,
         int seqParameterSetId,
         int maxNumRefFrames,
         int width,
@@ -101,6 +103,7 @@ public final class NalUnitUtil {
       this.profileIdc = profileIdc;
       this.constraintsFlagsAndReservedZero2Bits = constraintsFlagsAndReservedZero2Bits;
       this.levelIdc = levelIdc;
+      this.tierFlag = tierFlag;
       this.seqParameterSetId = seqParameterSetId;
       this.maxNumRefFrames = maxNumRefFrames;
       this.width = width;
@@ -224,6 +227,7 @@ public final class NalUnitUtil {
   private static final int H264_NAL_UNIT_TYPE_SEI = 6; // Supplemental enhancement information
   private static final int H264_NAL_UNIT_TYPE_SPS = 7; // Sequence parameter set
   private static final int H265_NAL_UNIT_TYPE_PREFIX_SEI = 39;
+  private static final int H266_NAL_UNIT_TYPE_PREFIX_SEI = 23;
 
   private static final Object scratchEscapePositionsLock = new Object();
 
@@ -326,15 +330,17 @@ public final class NalUnitUtil {
    * @return Whether the NAL unit with the specified header is an SEI NAL unit. False is returned if
    *     the {@code MimeType} is {@code null}.
    */
-  public static boolean isNalUnitSei(@Nullable String mimeType, byte nalUnitHeaderFirstByte) {
+  public static boolean isNalUnitSei(@Nullable String mimeType, byte nalUnitHeaderFirstByte, byte nalUnitHeaderSecondByte) {
     return (MimeTypes.VIDEO_H264.equals(mimeType)
             && (nalUnitHeaderFirstByte & 0x1F) == H264_NAL_UNIT_TYPE_SEI)
         || (MimeTypes.VIDEO_H265.equals(mimeType)
-            && ((nalUnitHeaderFirstByte & 0x7E) >> 1) == H265_NAL_UNIT_TYPE_PREFIX_SEI);
+            && ((nalUnitHeaderFirstByte & 0x7E) >> 1) == H265_NAL_UNIT_TYPE_PREFIX_SEI)
+        || (MimeTypes.VIDEO_H266.equals(mimeType)
+            && ((nalUnitHeaderSecondByte & 0xF8) >> 3) == H266_NAL_UNIT_TYPE_PREFIX_SEI);
   }
 
   /**
-   * Returns the type of the NAL unit in {@code data} that starts at {@code offset}.
+   * Returns the type of the H.264 NAL unit in {@code data} that starts at {@code offset}.
    *
    * @param data The data to search.
    * @param offset The start offset of a NAL unit. Must lie between {@code -3} (inclusive) and
@@ -355,6 +361,18 @@ public final class NalUnitUtil {
    */
   public static int getH265NalUnitType(byte[] data, int offset) {
     return (data[offset + 3] & 0x7E) >> 1;
+  }
+
+  /**
+   * Returns the type of the H.266 NAL unit in {@code data} that starts at {@code offset}.
+   *
+   * @param data The data to search.
+   * @param offset The start offset of a NAL unit. Must lie between {@code -3} (inclusive) and
+   *     {@code data.length - 3} (exclusive).
+   * @return The type of the unit.
+   */
+  public static int getH266NalUnitType(byte[] data, int offset) {
+    return (data[offset + 4] & 0xF8) >> 3;
   }
 
   /**
@@ -514,6 +532,7 @@ public final class NalUnitUtil {
         profileIdc,
         constraintsFlagsAndReservedZero2Bits,
         levelIdc,
+        false,
         seqParameterSetId,
         maxNumRefFrames,
         frameWidth,

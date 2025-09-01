@@ -1459,7 +1459,7 @@ public class FragmentedMp4Extractor implements Extractor {
           output.sampleData(nalPrefix, 1);
           processSeiNalUnitPayload =
               ceaTrackOutputs.length > 0
-                  && NalUnitUtil.isNalUnitSei(track.format.sampleMimeType, nalPrefixData[4]);
+                  && NalUnitUtil.isNalUnitSei(track.format.sampleMimeType, nalPrefixData[4], nalPrefixData[5]);
           sampleBytesWritten += 5;
           sampleSize += nalUnitLengthFieldLengthDiff;
         } else {

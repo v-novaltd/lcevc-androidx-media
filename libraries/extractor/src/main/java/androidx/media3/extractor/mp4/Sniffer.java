@@ -47,6 +47,8 @@ import java.io.IOException;
         0x61766331, // avc1
         0x68766331, // hvc1
         0x68657631, // hev1
+        0x76766331, // vvc1
+        0x76766931, // vvi1
         0x61763031, // av01
         0x6d703431, // mp41
         0x6d703432, // mp42

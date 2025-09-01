@@ -61,6 +61,15 @@ import java.util.List;
   public static final int TYPE_hvcC = 0x68766343;
 
   @SuppressWarnings("ConstantCaseForConstants")
+  public static final int TYPE_vvc1 = 0x76766331;
+
+  @SuppressWarnings("ConstantCaseForConstants")
+  public static final int TYPE_vvi1 = 0x76766931;
+
+  @SuppressWarnings("ConstantCaseForConstants")
+  public static final int TYPE_vvcC = 0x76766343;
+
+  @SuppressWarnings("ConstantCaseForConstants")
   public static final int TYPE_lvc1 = 0x6C766331;
 
   @SuppressWarnings("ConstantCaseForConstants")

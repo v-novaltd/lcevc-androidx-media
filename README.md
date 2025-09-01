@@ -11,10 +11,14 @@ In more detail, the upstream repo has here the following changes:
 *   The additional [LCEVC decoder library](libraries/decoder_lcevc);
 *   The additional LCEVC enabled variant, called `withDecoderExtensionsWithLcevc`, of the [main demo app](demos/main);
 *   Minor changes in the core libraries, mainly some backports of changes already in the upstream repo, in release tags from 1.3.1 onwards, that are functional to the LCEVC workflow;
+*   The additional code to detect and parse VVC (H.266) ISO/IEC 23090-3 encoded content, in the same way other MPEG standards are supported in the upstream repo. Note that an implementation of a VVC decoder, at the MediaCodec interface, is still needed to actually play VVC or LCEVC+VVC content;
 
 In this repo, every non-LCEVC functionality of the upstream repo, at the release tag mentioned above, is maintained. Please follow the upstream [README](https://github.com/androidx/media/blob/1.2.1/README.md), for reference.
 
 Note: The test `androidx.media3.common.util.AtomicFileTest.writeRead` in `lib-common` fails in Windows (this is because the test tries to delete a file that is still in open state, which is not allowed in Windows), unfortunately this is behaviour from the upstream project. As a result, in Windows, a `.\gradlew build` command from the project root directory will fail. The gradlew assembleRelease or assembleDebug commands, however, will succeed since they do not run tests.
+
+## Patent Notice (VVC / H.266)
+This repository contains code enabling playback of VVC streams in AndroidX Media3. Use of VVC in products or services may require a separate patent license from rights holders or licensing pools. No patent rights are granted by this repository. Examples of licensing programs are operated by Access Advance and Via LA.
 
 ## Compliance and Legal Information
 This section provides an explanation of the set of compliance artefacts included with the distribution of AndroidX Media, which has been modified and extended by V-Nova. The purpose of these artefacts is to ensure compliance with the open source licenses governing the components of the distributed software.
@@ -28,7 +32,7 @@ This is the standard license text of the Apache-2.0 license, which governs the o
 Filename: [LICENSE (Apache-2.0 License)](https://github.com/androidx/media/blob/1.2.1/LICENSE)
 
 #### BSD-3-Clause-Clear License Text
-This license covers the decoder LCEVC library (also called 'the extension') developed by V-Nova for AndroidX Media.
+This license covers the decoder LCEVC library (also called 'the extension'), and the VVC (H.266) parsing code developed by V-Nova for AndroidX Media.
 
 Filename: [libraries/decoder_lcevc/LICENSE.txt (BSD-3-Clause-Clear License)](libraries/decoder_lcevc/LICENSE.txt)
 
