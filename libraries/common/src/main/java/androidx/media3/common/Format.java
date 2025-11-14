@@ -15,6 +15,7 @@
  */
 package androidx.media3.common;
 
+import static androidx.media3.common.util.Assertions.checkArgument;
 import static java.lang.annotation.ElementType.TYPE_USE;
 
 import android.os.Bundle;
@@ -57,6 +58,7 @@ import java.util.UUID;
  *   <li>{@link #peakBitrate}
  *   <li>{@link #codecs}
  *   <li>{@link #metadata}
+ *   <li>{@link #scalableBase}
  * </ul>
  *
  * <h2 id="container-formats">Fields relevant to container formats</h2>
@@ -144,6 +146,7 @@ public final class Format implements Bundleable {
     private int peakBitrate;
     @Nullable private String codecs;
     @Nullable private Metadata metadata;
+    @Nullable private Format scalableBase;
 
     // Container specific.
 
@@ -232,6 +235,7 @@ public final class Format implements Bundleable {
       this.peakBitrate = format.peakBitrate;
       this.codecs = format.codecs;
       this.metadata = format.metadata;
+      this.scalableBase = format.scalableBase;
       // Container specific.
       this.containerMimeType = format.containerMimeType;
       // Sample specific.
@@ -383,6 +387,18 @@ public final class Format implements Bundleable {
     @CanIgnoreReturnValue
     public Builder setMetadata(@Nullable Metadata metadata) {
       this.metadata = metadata;
+      return this;
+    }
+
+    /**
+     * Sets {@link Format#scalableBase}. The default value is {@code null}.
+     *
+     * @param scalableBase The {@link Format#scalableBase}.
+     * @return The builder.
+     */
+    @CanIgnoreReturnValue
+    public Builder setScalableBase(@Nullable Format scalableBase) {
+      this.scalableBase = scalableBase;
       return this;
     }
 
@@ -808,6 +824,9 @@ public final class Format implements Bundleable {
   /** Metadata, or null if unknown or not applicable. */
   @UnstableApi @Nullable public final Metadata metadata;
 
+  /** Scalable base format, or null if unknown or not applicable. */
+  @UnstableApi @Nullable public final Format scalableBase;
+
   // Container specific.
 
   /** The MIME type of the container, or null if unknown or not applicable. */
@@ -940,6 +959,7 @@ public final class Format implements Bundleable {
     bitrate = peakBitrate != NO_VALUE ? peakBitrate : averageBitrate;
     codecs = builder.codecs;
     metadata = builder.metadata;
+    scalableBase = builder.scalableBase;
     // Container specific.
     containerMimeType = builder.containerMimeType;
     // Sample specific.
@@ -1027,6 +1047,9 @@ public final class Format implements Bundleable {
             ? manifestFormat.metadata
             : this.metadata.copyWithAppendedEntriesFrom(manifestFormat.metadata);
 
+    @Nullable Format scalableBase = (manifestFormat.scalableBase != null) ?
+        manifestFormat.scalableBase : this.scalableBase;
+
     float frameRate = this.frameRate;
     if (frameRate == NO_VALUE && trackType == C.TRACK_TYPE_VIDEO) {
       frameRate = manifestFormat.frameRate;
@@ -1049,8 +1072,24 @@ public final class Format implements Bundleable {
         .setPeakBitrate(peakBitrate)
         .setCodecs(codecs)
         .setMetadata(metadata)
+        .setScalableBase(scalableBase)
         .setDrmInitData(drmInitData)
         .setFrameRate(frameRate)
+        .build();
+  }
+
+  public Format withScalableBaseFormatInfo(Format scalableBaseFormat) {
+    checkArgument(scalableBaseFormat != null);
+    String mergedMimeType = MimeTypes.concatenateSubtype(this.sampleMimeType, scalableBaseFormat.sampleMimeType);
+    ColorInfo colorInfo = this.colorInfo != null ? this.colorInfo : scalableBaseFormat.colorInfo;
+    return scalableBaseFormat.buildUpon()
+        .setId(this.id)
+        .setSampleMimeType(mergedMimeType)
+        .setWidth(this.width)
+        .setHeight(this.height)
+        .setColorInfo(colorInfo)
+        .setPixelWidthHeightRatio(this.pixelWidthHeightRatio)
+        .setScalableBase(scalableBaseFormat)
         .build();
   }
 
@@ -1073,7 +1112,9 @@ public final class Format implements Bundleable {
   public String toString() {
     return "Format("
         + id
-        + ", "
+        + ", {"
+        + (scalableBase != null ? scalableBase.id : " ")
+        + "}, "
         + label
         + ", "
         + containerMimeType
@@ -1091,6 +1132,8 @@ public final class Format implements Bundleable {
         + height
         + ", "
         + frameRate
+        + ", "
+        + initializationData.size()
         + ", "
         + colorInfo
         + "]"
@@ -1115,6 +1158,7 @@ public final class Format implements Bundleable {
       result = 31 * result + peakBitrate;
       result = 31 * result + (codecs == null ? 0 : codecs.hashCode());
       result = 31 * result + (metadata == null ? 0 : metadata.hashCode());
+      result = 31 * result + (scalableBase == null ? 0 : scalableBase.hashCode());
       // Container specific.
       result = 31 * result + (containerMimeType == null ? 0 : containerMimeType.hashCode());
       // Sample specific.
@@ -1192,9 +1236,107 @@ public final class Format implements Bundleable {
         && Util.areEqual(language, other.language)
         && Arrays.equals(projectionData, other.projectionData)
         && Util.areEqual(metadata, other.metadata)
+        && Util.areEqual(scalableBase, other.scalableBase)
         && Util.areEqual(colorInfo, other.colorInfo)
         && Util.areEqual(drmInitData, other.drmInitData)
         && initializationDataEquals(other);
+  }
+
+  /** Returns true if both integers are set and have different values. */
+  @UnstableApi
+  public static boolean areSetDifferent(int i1, int i2) {
+    return i1 != NO_VALUE && i2 != NO_VALUE && i1 != i2;
+  }
+
+  /** Returns true if both floats are set and have different values. */
+  @UnstableApi
+  public static boolean areSetDifferent(float f1, float f2) {
+    return f1 != NO_VALUE && f2 != NO_VALUE && Float.compare(f1, f2) != 0;
+  }
+
+  /** Returns true if both objects are set and have different values. */
+  @UnstableApi
+  public static boolean areSetDifferent(@Nullable Object o1, @Nullable Object o2) {
+    return o1 != null && o2 != null && !Util.areEqual(o1, o2);
+  }
+
+  /** Returns true if both initialization data are set and have some different values. */
+  public static boolean areInitializationDataSetDifferent(List<byte[]> l1, List<byte[]> l2) {
+    // The two initialization data are set differently if they are both set, of same size
+    // and with at least one of the arrays different than the other
+    if (l1 != null && l2 != null && l1.size() == l2.size()) {
+      for (int i = 0; i < l1.size(); i++) {
+        if (!Arrays.equals(l1.get(i), l2.get(i))) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Returns whether, on core fields, this and another {@code obj} formats are equal.
+   * This is intended to be used when comparing Format objects that may be only partially set.
+   * A subset of fields is considered non-core and are compared only if they are fully set.
+   * The non-core fields are:
+   * averageBitrate
+   * peakBitrate
+   * frameRate
+   * label
+   * codecs
+   * containerMimeType
+   * language
+   * metadata
+   * colorInfo
+   * initializationData
+   *
+   * @param obj The other format that is being compared.
+   * @return Whether this format is equal to another {@code obj} on core fields.
+   */
+  public boolean coreEquals(@Nullable Object obj) {
+    if (this == obj) {
+      return true;
+    }
+    if (obj == null || getClass() != obj.getClass()) {
+      return false;
+    }
+
+    Format other = (Format) obj;
+
+    // Field equality checks ordered by type, with the cheapest checks first.
+    return selectionFlags == other.selectionFlags
+        && roleFlags == other.roleFlags
+        && !areSetDifferent(averageBitrate, other.averageBitrate)
+        && !areSetDifferent(peakBitrate, other.peakBitrate)
+        && maxInputSize == other.maxInputSize
+        && subsampleOffsetUs == other.subsampleOffsetUs
+        && width == other.width
+        && height == other.height
+        && rotationDegrees == other.rotationDegrees
+        && stereoMode == other.stereoMode
+        && channelCount == other.channelCount
+        && sampleRate == other.sampleRate
+        && pcmEncoding == other.pcmEncoding
+        && encoderDelay == other.encoderDelay
+        && encoderPadding == other.encoderPadding
+        && accessibilityChannel == other.accessibilityChannel
+        && tileCountHorizontal == other.tileCountHorizontal
+        && tileCountVertical == other.tileCountVertical
+        && cryptoType == other.cryptoType
+        && !areSetDifferent(frameRate, other.frameRate)
+        && Float.compare(pixelWidthHeightRatio, other.pixelWidthHeightRatio) == 0
+        // ids are allowed to be different
+        && !areSetDifferent(label, other.label)
+        && !areSetDifferent(codecs, other.codecs)
+        && !areSetDifferent(containerMimeType, other.containerMimeType)
+        && Util.areEqual(sampleMimeType, other.sampleMimeType)
+        && !areSetDifferent(language, other.language)
+        && Arrays.equals(projectionData, other.projectionData)
+        && !areSetDifferent(metadata, other.metadata)
+        && Util.areEqual(scalableBase, other.scalableBase)
+        && !areSetDifferent(colorInfo, other.colorInfo)
+        && Util.areEqual(drmInitData, other.drmInitData)
+        && !areInitializationDataSetDifferent(initializationData, other.initializationData);
   }
 
   /**
@@ -1385,6 +1527,7 @@ public final class Format implements Bundleable {
   private static final String FIELD_CRYPTO_TYPE = Util.intToStringMaxRadix(29);
   private static final String FIELD_TILE_COUNT_HORIZONTAL = Util.intToStringMaxRadix(30);
   private static final String FIELD_TILE_COUNT_VERTICAL = Util.intToStringMaxRadix(31);
+  private static final String FIELD_SCALABLE_BASE = Util.intToStringMaxRadix(32);
 
   @UnstableApi
   @Override
@@ -1410,6 +1553,9 @@ public final class Format implements Bundleable {
     if (!excludeMetadata) {
       // TODO (internal ref: b/239701618)
       bundle.putParcelable(FIELD_METADATA, metadata);
+    }
+    if (scalableBase != null) {
+      bundle.putBundle(FIELD_SCALABLE_BASE, scalableBase.toBundle());
     }
     // Container specific.
     bundle.putString(FIELD_CONTAINER_MIME_TYPE, containerMimeType);
@@ -1456,6 +1602,7 @@ public final class Format implements Bundleable {
   private static Format fromBundle(Bundle bundle) {
     Builder builder = new Builder();
     BundleableUtil.ensureClassLoader(bundle);
+    Bundle scalableBaseBundle = bundle.getBundle(FIELD_SCALABLE_BASE);
     builder
         .setId(defaultIfNull(bundle.getString(FIELD_ID), DEFAULT.id))
         .setLabel(defaultIfNull(bundle.getString(FIELD_LABEL), DEFAULT.label))
@@ -1466,6 +1613,7 @@ public final class Format implements Bundleable {
         .setPeakBitrate(bundle.getInt(FIELD_PEAK_BITRATE, DEFAULT.peakBitrate))
         .setCodecs(defaultIfNull(bundle.getString(FIELD_CODECS), DEFAULT.codecs))
         .setMetadata(defaultIfNull(bundle.getParcelable(FIELD_METADATA), DEFAULT.metadata))
+        .setScalableBase(defaultIfNull(scalableBaseBundle != null ? fromBundle(scalableBaseBundle) : null, DEFAULT.scalableBase))
         // Container specific.
         .setContainerMimeType(
             defaultIfNull(bundle.getString(FIELD_CONTAINER_MIME_TYPE), DEFAULT.containerMimeType))

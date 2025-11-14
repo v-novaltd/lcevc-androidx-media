@@ -1220,7 +1220,7 @@ public class MediaCodecVideoRenderer extends MediaCodecRenderer implements Video
               ? mediaFormat.getInteger(KEY_CROP_BOTTOM) - mediaFormat.getInteger(KEY_CROP_TOP) + 1
               : mediaFormat.getInteger(MediaFormat.KEY_HEIGHT);
     }
-    boolean hasPixelAspectRatio = mediaFormat.containsKey(MediaFormat.KEY_PIXEL_ASPECT_RATIO_WIDTH)
+    boolean hasPixelAspectRatio = mediaFormat != null && mediaFormat.containsKey(MediaFormat.KEY_PIXEL_ASPECT_RATIO_WIDTH)
         && mediaFormat.containsKey(MediaFormat.KEY_PIXEL_ASPECT_RATIO_HEIGHT);
     pixelWidthHeightRatio = hasPixelAspectRatio ?
         mediaFormat.getInteger(MediaFormat.KEY_PIXEL_ASPECT_RATIO_WIDTH) /
@@ -1979,6 +1979,10 @@ public class MediaCodecVideoRenderer extends MediaCodecRenderer implements Video
         // streamFormat likely has incomplete color information. Copy the complete color information
         // from format to avoid codec re-use being ruled out for only this reason.
         streamFormat = streamFormat.buildUpon().setColorInfo(format.colorInfo).build();
+      }
+      if (streamFormat.scalableBase != null
+          && MimeTypes.getBase(streamFormat.sampleMimeType) != MimeTypes.getBase(streamFormat.scalableBase.sampleMimeType)) {
+        streamFormat = streamFormat.withScalableBaseFormatInfo(streamFormat.scalableBase);
       }
       if (codecInfo.canReuseCodec(format, streamFormat).result != REUSE_RESULT_NO) {
         haveUnknownDimensions |=

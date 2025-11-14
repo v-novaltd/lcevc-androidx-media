@@ -43,6 +43,7 @@ import androidx.annotation.IntDef;
 import androidx.annotation.Nullable;
 import androidx.annotation.RequiresApi;
 import androidx.annotation.VisibleForTesting;
+import androidx.media3.common.ColorInfo;
 import androidx.media3.common.Format;
 import androidx.media3.common.MimeTypes;
 import androidx.media3.common.util.Assertions;
@@ -417,7 +418,8 @@ public final class MediaCodecInfo {
    */
   public DecoderReuseEvaluation canReuseCodec(Format oldFormat, Format newFormat) {
     @DecoderDiscardReasons int discardReasons = 0;
-    if (!Util.areEqual(oldFormat.sampleMimeType, newFormat.sampleMimeType)) {
+    if (!Util.areEqual(MimeTypes.getTopLevelType(oldFormat.sampleMimeType), MimeTypes.getTopLevelType(newFormat.sampleMimeType))
+        || !Util.areEqual(MimeTypes.getBase(oldFormat.sampleMimeType), MimeTypes.getBase(newFormat.sampleMimeType))) {
       discardReasons |= DISCARD_REASON_MIME_TYPE_CHANGED;
     }
 
@@ -429,7 +431,9 @@ public final class MediaCodecInfo {
           && (oldFormat.width != newFormat.width || oldFormat.height != newFormat.height)) {
         discardReasons |= DISCARD_REASON_VIDEO_RESOLUTION_CHANGED;
       }
-      if (!Util.areEqual(oldFormat.colorInfo, newFormat.colorInfo)) {
+      ColorInfo oldColorInfo = oldFormat.colorInfo != null ? oldFormat.colorInfo : new ColorInfo.Builder().build();
+      ColorInfo newColorInfo = newFormat.colorInfo != null ? newFormat.colorInfo : new ColorInfo.Builder().build();
+      if (!newColorInfo.dataSpaceEquals(oldColorInfo)) {
         discardReasons |= DISCARD_REASON_VIDEO_COLOR_INFO_CHANGED;
       }
       if (needsAdaptationReconfigureWorkaround(name)

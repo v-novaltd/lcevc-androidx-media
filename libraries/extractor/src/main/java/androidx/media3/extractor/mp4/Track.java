@@ -54,7 +54,7 @@ public final class Track {
   public final int id;
 
   /**
-   * One of {@link C#TRACK_TYPE_AUDIO}, {@link C#TRACK_TYPE_VIDEO} and {@link C#TRACK_TYPE_TEXT}.
+   * One of {@link C#TRACK_TYPE_AUDIO}, {@link C#TRACK_TYPE_VIDEO}, {@link C#TRACK_TYPE_VIDEO_SCALABLE_BASE} and {@link C#TRACK_TYPE_TEXT}.
    */
   public final @C.TrackType int type;
 

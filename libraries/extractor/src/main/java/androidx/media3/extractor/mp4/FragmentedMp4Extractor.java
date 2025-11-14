@@ -529,32 +529,57 @@ public class FragmentedMp4Extractor implements Extractor {
 
     int trackCount = sampleTables.size();
     if (trackBundles.size() == 0) {
-      // We need to create the track bundles.
+      // First create all track outputs
       TrackOutput[] trackOutputs = new TrackOutput[trackCount];
       for (int i = 0; i < trackCount; i++) {
         TrackSampleTable sampleTable = sampleTables.get(i);
         Track track = sampleTable.track;
         trackOutputs[i] = extractorOutput.track(track.id, track.type, track.scalableBaseId);
-        TrackBundle trackBundle =
-            new TrackBundle(
-                trackOutputs[i],
-                sampleTable,
-                getDefaultSampleValues(defaultSampleValuesArray, track.id));
-        trackBundles.put(track.id, trackBundle);
-        durationUs = max(durationUs, track.durationUs);
       }
-      // Link scalable bases with their enhancements
+      // Link scalable base track outputs with their enhancements
       for (int i = 0; i < trackCount; i++) {
         Track track = sampleTables.get(i).track;
         if (track.scalableBaseId != Track.SCALABLE_BASE_UNSET) {
           for (int j = 0; j < trackCount; j++) {
             Track maybeBaseTrack = sampleTables.get(j).track;
             if (maybeBaseTrack.id == track.scalableBaseId) {
-              trackOutputs[j].attachEnhancement(trackOutputs[i]);
+              trackOutputs[i].attachScalableBase(trackOutputs[j]);
               break;
             }
           }
         }
+      }
+      // Possibly add scalable base formats to track formats
+      for (int i = 0; i < trackCount; i++) {
+        TrackSampleTable sampleTable = sampleTables.get(i);
+        Track track = sampleTable.track;
+        if (track.scalableBaseId != Track.SCALABLE_BASE_UNSET) {
+          for (int j = 0; j < trackCount; j++) {
+            Track maybeBaseTrack = sampleTables.get(j).track;
+            if (maybeBaseTrack.id == track.scalableBaseId) {
+              track = track.copyWithFormat(
+                  track.format.buildUpon()
+                      .setScalableBase(maybeBaseTrack.format)
+                      .build());
+              sampleTables.set(i, new TrackSampleTable(
+                  track,
+                  sampleTable.offsets,
+                  sampleTable.sizes,
+                  sampleTable.maximumSize,
+                  sampleTable.timestampsUs,
+                  sampleTable.flags,
+                  sampleTable.durationUs));
+              break;
+            }
+          }
+        }
+        TrackBundle trackBundle =
+            new TrackBundle(
+                trackOutputs[i],
+                sampleTables.get(i),
+                getDefaultSampleValues(defaultSampleValuesArray, track.id));
+        trackBundles.put(track.id, trackBundle);
+        durationUs = max(durationUs, track.durationUs);
       }
       extractorOutput.endTracks();
     } else {

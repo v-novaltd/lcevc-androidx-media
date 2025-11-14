@@ -1123,6 +1123,19 @@ import org.checkerframework.checker.nullness.qual.RequiresNonNull;
         : createFakeTrackOutput(id, type);
   }
 
+  private void maybeAttachScalableBase() {
+    for (int i = 0; i < sampleQueues.length; i++) {
+      if (sampleQueueTrackIds[i].second != Track.SCALABLE_BASE_UNSET) {
+        // first: id, second: scalableBaseId
+        for (int j = 0; j < sampleQueues.length; j++) {
+          if (sampleQueueTrackIds[j].first == sampleQueueTrackIds[i].second) {
+            sampleQueues[i].attachScalableBase(sampleQueues[j]);
+          }
+        }
+      }
+    }
+  }
+
   private SampleQueue createSampleQueue(int id, int type, int scalableBaseId) {
     int trackCount = sampleQueues.length;
 
@@ -1147,11 +1160,12 @@ import org.checkerframework.checker.nullness.qual.RequiresNonNull;
     if (scalableBaseId == Track.SCALABLE_BASE_UNSET) {
       sampleQueueIndicesByType.append(type, trackCount);
     }
-    if (getTrackTypeScore(type) > getTrackTypeScore(primarySampleQueueType)) {
+    if (getTrackTypeScore(type) > getTrackTypeScore(primarySampleQueueType) || scalableBaseId != Track.SCALABLE_BASE_UNSET) {
       primarySampleQueueIndex = trackCount;
       primarySampleQueueType = type;
     }
     sampleQueuesEnabledStates = Arrays.copyOf(sampleQueuesEnabledStates, trackCount + 1);
+    maybeAttachScalableBase();
     return sampleQueue;
   }
 
@@ -1328,7 +1342,10 @@ import org.checkerframework.checker.nullness.qual.RequiresNonNull;
         Format upstreamFormat = Assertions.checkStateNotNull(sampleQueue.getUpstreamFormat());
         if (formatsMatch(upstreamFormat, trackGroups.get(i).getFormat(0))) {
           trackGroupToSampleQueueIndex[i] = queueIndex;
-          break;
+          // Look for enhancement sampleQueue with priority
+          if (sampleQueue.isEnhancement()) {
+            break;
+          }
         }
       }
     }

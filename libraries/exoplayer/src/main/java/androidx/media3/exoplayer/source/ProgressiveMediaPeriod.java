@@ -746,6 +746,18 @@ import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
     @NullableType SampleQueue[] sampleQueues = Arrays.copyOf(this.sampleQueues, trackCount + 1);
     sampleQueues[trackCount] = trackOutput;
     this.sampleQueues = Util.castNonNullTypeArray(sampleQueues);
+    // Link scalable bases
+    for (int i = 0; i < sampleQueues.length; i++) {
+      TrackId trackId = sampleQueueTrackIds[i];
+      if (trackId.scalableBaseId != Track.SCALABLE_BASE_UNSET) {
+        for (int j = 0; j < sampleQueues.length; j++) {
+          TrackId baseTrackId = sampleQueueTrackIds[j];
+          if (baseTrackId.id == trackId.scalableBaseId) {
+            sampleQueues[i].attachScalableBase(sampleQueues[j]);
+          }
+        }
+      }
+    }
     return trackOutput;
   }
 

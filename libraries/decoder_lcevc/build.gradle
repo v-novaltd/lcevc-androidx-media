@@ -45,7 +45,7 @@ android {
 }
 
 dependencies {
-    implementation 'com.vnova.lcevc.decoder:lcevc-dil:3.3.5-8-20250214-a19c49a6'
+    implementation 'com.vnova.lcevc.decoder:lcevc-dil:3.4.1-20250814-55e15fb0'
     implementation project(modulePrefix + 'lib-decoder')
     implementation project(modulePrefix + 'lib-exoplayer')
     androidTestImplementation 'androidx.test.ext:junit:' + androidxTestJUnitVersion

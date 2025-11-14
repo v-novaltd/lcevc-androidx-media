@@ -22,6 +22,7 @@ import androidx.media3.exoplayer.source.SampleQueue;
 import androidx.media3.exoplayer.source.chunk.ChunkExtractor.TrackOutputProvider;
 import androidx.media3.extractor.DummyTrackOutput;
 import androidx.media3.extractor.TrackOutput;
+import androidx.media3.extractor.mp4.Track;
 
 /**
  * A {@link TrackOutputProvider} that provides {@link TrackOutput TrackOutputs} based on a
@@ -51,13 +52,26 @@ public final class BaseMediaChunkOutput implements TrackOutputProvider {
 
   @Override
   public TrackOutput track(int id, @C.TrackType int type) {
+    return track(id, type, Track.SCALABLE_BASE_UNSET);
+  }
+
+  @Override
+  public TrackOutput track(int id, @C.TrackType int type, int scalableBaseId) {
     for (int i = 0; i < trackTypes.length; i++) {
       if (type == trackTypes[i]) {
         if (trackIds[i] == Integer.MIN_VALUE) {
           trackIds[i] = id;
           return sampleQueues[i];
-        } else if (trackIds[i] == id) {
+        } else if (scalableBaseId == Track.SCALABLE_BASE_UNSET && trackIds[i] == id) {
           return sampleQueues[i];
+        }
+        else if (scalableBaseId != Track.SCALABLE_BASE_UNSET && sampleQueues[i].isEnhancement()) {
+          // ChunkSampleStream operates on sampleQueues[0] so the enhanced sampleQueue
+          // must be moved to the index 0 in order for it to be the primary one
+          moveToFront(trackTypes, i);
+          moveToFront(trackIds, i);
+          moveToFront(sampleQueues, i);
+          return sampleQueues[0];
         }
       }
     }
@@ -82,5 +96,23 @@ public final class BaseMediaChunkOutput implements TrackOutputProvider {
     for (SampleQueue sampleQueue : sampleQueues) {
       sampleQueue.setSampleOffsetUs(sampleOffsetUs);
     }
+  }
+
+  public static <T> void moveToFront(T[] array, int index) {
+    if (array.length == 0) return;
+    if (index <= 0 || index >= array.length) return;
+
+    T element = array[index];
+    System.arraycopy(array, 0, array, 1, index);
+    array[0] = element;
+  }
+
+  public static void moveToFront(int[] array, int index) {
+    if (array.length == 0) return;
+    if (index <= 0 || index >= array.length) return;
+
+    int element = array[index];
+    System.arraycopy(array, 0, array, 1, index);
+    array[0] = element;
   }
 }

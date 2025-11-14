@@ -1442,10 +1442,11 @@ public abstract class MediaCodecRenderer extends BaseRenderer {
 
     onQueueInputBuffer(buffer);
     try {
+      int flags = buffer.isKeyFrame() ? MediaCodec.BUFFER_FLAG_KEY_FRAME : 0;
       if (bufferEncrypted) {
         checkNotNull(codec)
             .queueSecureInputBuffer(
-                inputIndex, /* offset= */ 0, buffer.cryptoInfo, presentationTimeUs, /* flags= */ 0);
+                inputIndex, /* offset= */ 0, buffer.cryptoInfo, presentationTimeUs, flags);
       } else {
         checkNotNull(codec)
             .queueInputBuffer(
@@ -1453,7 +1454,7 @@ public abstract class MediaCodecRenderer extends BaseRenderer {
                 /* offset= */ 0,
                 checkNotNull(buffer.data).limit(),
                 presentationTimeUs,
-                /* flags= */ 0);
+                flags);
       }
     } catch (CryptoException e) {
       throw createRendererException(

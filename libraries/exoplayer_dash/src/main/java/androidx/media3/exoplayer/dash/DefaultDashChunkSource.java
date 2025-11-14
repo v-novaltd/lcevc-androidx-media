@@ -65,6 +65,7 @@ import com.google.common.collect.ImmutableMap;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import org.checkerframework.checker.initialization.qual.UnknownInitialization;
 import org.checkerframework.checker.nullness.qual.RequiresNonNull;
 
@@ -402,6 +403,14 @@ public class DefaultDashChunkSource implements DashChunkSource {
     trackSelection.updateSelectedTrack(
         playbackPositionUs, bufferedDurationUs, availableLiveDurationUs, queue, chunkIterators);
     int selectedTrackIndex = trackSelection.getSelectedIndex();
+    if (selectedTrackIndex == C.INDEX_UNSET) {
+      out.idle = true;
+      return;
+    }
+
+    if (selectedTrackIndex < 0) {
+      throw new IllegalStateException("selectedTrackIndex cannot be unset");
+    }
 
     @Nullable
     CmcdData.Factory cmcdDataFactory =
@@ -666,6 +675,25 @@ public class DefaultDashChunkSource implements DashChunkSource {
     ArrayList<Representation> representations = new ArrayList<>();
     for (int adaptationSetIndex : adaptationSetIndices) {
       representations.addAll(manifestAdaptationSets.get(adaptationSetIndex).representations);
+    }
+    // Use dependencyId to set scalable base format where needed
+    for (int j = 0; j < representations.size(); j++) {
+      Representation representation = representations.get(j);
+      String dependencyId = representation.dependencyId;
+      if (dependencyId != null) {
+        Representation baseRepresentation = representations.stream()
+            .filter(rep -> Objects.equals(rep.format.id, dependencyId))
+            .findFirst().orElse(null);
+        if (baseRepresentation == null) {
+          throw new IllegalArgumentException("could not find a complimentary representation with id = " + dependencyId);
+        }
+        Format newFormat = representation.format.buildUpon()
+            .setScalableBase(baseRepresentation.format)
+            .build();
+        Representation newRepresentation = representation
+            .copyWithFormat(newFormat);
+        representations.set(j, newRepresentation);
+      }
     }
     return representations;
   }

@@ -414,7 +414,7 @@ public final class H266Reader implements ElementaryStreamReader {
     );
   }
 
-  public static Format parseMediaFormat(
+  @Nullable public static Format parseMediaFormat(
       @Nullable String formatId,
       NalUnitTargetBuffer vps,
       NalUnitTargetBuffer sps,
@@ -425,6 +425,9 @@ public final class H266Reader implements ElementaryStreamReader {
     System.arraycopy(sps.nalData, 0, csdData, vps.nalLength, sps.nalLength);
     System.arraycopy(pps.nalData, 0, csdData, vps.nalLength + sps.nalLength, pps.nalLength);
 
+    if (!sps.isCompleted() || sps.nalLength < 4) {
+      return null;
+    }
     // Parse the SPS NAL unit, as per H.266/VVC (2022) 7.3.2.4
     ParsableNalUnitBitArray bitArray = new ParsableNalUnitBitArray(sps.nalData, 0, sps.nalLength);
     bitArray.skipBits(40);    // NAL header
@@ -780,42 +783,47 @@ public final class H266Reader implements ElementaryStreamReader {
     String codecs = CodecSpecificDataUtil.buildVvcCodecString(spsData.profileIdc, spsData.tierFlag, spsData.levelIdc);
     Log.d(TAG, "VVC codecs string: " + codecs);
 
-    // Parse the PPS NAL unit, as per H.266/VVC (2022) 7.3.2.5
-    bitArray = new ParsableNalUnitBitArray(pps.nalData, 0, pps.nalLength);
-    bitArray.skipBits(40);    // NAL header
-    bitArray.skipBits(11);    // pps_pic_parameter_set_id, pps_seq_parameter_set_id, pps_mixed_nalu_types_in_pic_flag
-    int ppsPicWidthInLumaSamples = bitArray.readUnsignedExpGolombCodedInt();
-    int ppsPicHeightInLumaSamples = bitArray.readUnsignedExpGolombCodedInt();
-    Log.d(TAG, "preCW ppsPicWidthInLumaSamples = " + ppsPicWidthInLumaSamples);
-    Log.d(TAG, "preCW ppsPicHeightInLumaSamples = " + ppsPicHeightInLumaSamples);
-    int ppsConfWinLeftOffset = 0;
-    int ppsConfWinRightOffset = 0;
-    int ppsConfWinTopOffset = 0;
-    int ppsConfWinBottomOffset = 0;
-    boolean ppsConformanceWindowFlag = bitArray.readBit();
-    Log.d(TAG, "ppsConformanceWindowFlag = " + ppsConformanceWindowFlag);
-    if (ppsConformanceWindowFlag) {
-      ppsConfWinLeftOffset = bitArray.readUnsignedExpGolombCodedInt();
-      ppsConfWinRightOffset = bitArray.readUnsignedExpGolombCodedInt();
-      ppsConfWinTopOffset = bitArray.readUnsignedExpGolombCodedInt();
-      ppsConfWinBottomOffset = bitArray.readUnsignedExpGolombCodedInt();
-      Log.d(TAG, "ppsConfWinLeftOffset = "+ ppsConfWinLeftOffset);
-      Log.d(TAG, "ppsConfWinRightOffset = "+ ppsConfWinRightOffset);
-      Log.d(TAG, "ppsConfWinTopOffset = "+ ppsConfWinTopOffset);
-      Log.d(TAG, "ppsConfWinBottomOffset = "+ ppsConfWinBottomOffset);
+    int ppsPicWidthInLumaSamples = spsPicWidthMaxInLumaSamples;
+    int ppsPicHeightInLumaSamples = spsPicHeightMaxInLumaSamples;
+
+    if (pps.isCompleted() && pps.nalLength >= 4) {
+      // Parse the PPS NAL unit, as per H.266/VVC (2022) 7.3.2.5
+      bitArray = new ParsableNalUnitBitArray(pps.nalData, 0, pps.nalLength);
+      bitArray.skipBits(40);    // NAL header
+      bitArray.skipBits(11);    // pps_pic_parameter_set_id, pps_seq_parameter_set_id, pps_mixed_nalu_types_in_pic_flag
+      ppsPicWidthInLumaSamples = bitArray.readUnsignedExpGolombCodedInt();
+      ppsPicHeightInLumaSamples = bitArray.readUnsignedExpGolombCodedInt();
+      Log.d(TAG, "preCW ppsPicWidthInLumaSamples = " + ppsPicWidthInLumaSamples);
+      Log.d(TAG, "preCW ppsPicHeightInLumaSamples = " + ppsPicHeightInLumaSamples);
+      int ppsConfWinLeftOffset = 0;
+      int ppsConfWinRightOffset = 0;
+      int ppsConfWinTopOffset = 0;
+      int ppsConfWinBottomOffset = 0;
+      boolean ppsConformanceWindowFlag = bitArray.readBit();
+      Log.d(TAG, "ppsConformanceWindowFlag = " + ppsConformanceWindowFlag);
+      if (ppsConformanceWindowFlag) {
+        ppsConfWinLeftOffset = bitArray.readUnsignedExpGolombCodedInt();
+        ppsConfWinRightOffset = bitArray.readUnsignedExpGolombCodedInt();
+        ppsConfWinTopOffset = bitArray.readUnsignedExpGolombCodedInt();
+        ppsConfWinBottomOffset = bitArray.readUnsignedExpGolombCodedInt();
+        Log.d(TAG, "ppsConfWinLeftOffset = " + ppsConfWinLeftOffset);
+        Log.d(TAG, "ppsConfWinRightOffset = " + ppsConfWinRightOffset);
+        Log.d(TAG, "ppsConfWinTopOffset = " + ppsConfWinTopOffset);
+        Log.d(TAG, "ppsConfWinBottomOffset = " + ppsConfWinBottomOffset);
+      } else if (ppsPicWidthInLumaSamples == spsPicWidthMaxInLumaSamples
+          && ppsPicHeightInLumaSamples == spsPicHeightMaxInLumaSamples) {
+        // As per Rec. ITU-T H.266 (04/2022) top of page 119
+        Log.d(TAG, "CW not defined in PPS and ppsPicWidth/Height matching spsPicWidth/HeightMax, must apply the SPS CW");
+        ppsConfWinLeftOffset = spsConfWinLeftOffset;
+        ppsConfWinRightOffset = spsConfWinRightOffset;
+        ppsConfWinTopOffset = spsConfWinTopOffset;
+        ppsConfWinBottomOffset = spsConfWinBottomOffset;
+      }
+      ppsPicWidthInLumaSamples -= subWidthC * (ppsConfWinLeftOffset + ppsConfWinRightOffset);
+      ppsPicHeightInLumaSamples -= subHeightC * (ppsConfWinTopOffset + ppsConfWinBottomOffset);
+      Log.d(TAG, "postCW ppsPicWidthInLumaSamples = " + ppsPicWidthInLumaSamples);
+      Log.d(TAG, "postCW ppsPicHeightInLumaSamples = " + ppsPicHeightInLumaSamples);
     }
-    else if (ppsPicWidthInLumaSamples==spsPicWidthMaxInLumaSamples && ppsPicHeightInLumaSamples==spsPicHeightMaxInLumaSamples) {
-      // As per Rec. ITU-T H.266 (04/2022) top of page 119
-      Log.d(TAG, "CW not defined in PPS and ppsPicWidth/Height matching spsPicWidth/HeightMax, must apply the SPS CW");
-      ppsConfWinLeftOffset = spsConfWinLeftOffset;
-      ppsConfWinRightOffset = spsConfWinRightOffset;
-      ppsConfWinTopOffset = spsConfWinTopOffset;
-      ppsConfWinBottomOffset = spsConfWinBottomOffset;
-    }
-    ppsPicWidthInLumaSamples -= subWidthC * (ppsConfWinLeftOffset + ppsConfWinRightOffset);
-    ppsPicHeightInLumaSamples -= subHeightC * (ppsConfWinTopOffset + ppsConfWinBottomOffset);
-    Log.d(TAG, "postCW ppsPicWidthInLumaSamples = " + ppsPicWidthInLumaSamples);
-    Log.d(TAG, "postCW ppsPicHeightInLumaSamples = " + ppsPicHeightInLumaSamples);
 
     return new Format.Builder()
         .setId(formatId)

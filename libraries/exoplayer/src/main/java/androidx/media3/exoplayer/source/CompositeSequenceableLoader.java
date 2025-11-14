@@ -25,6 +25,7 @@ import androidx.media3.exoplayer.LoadingInfo;
 @UnstableApi
 public class CompositeSequenceableLoader implements SequenceableLoader {
 
+  private static final int DEFAULT_MAX_UPSTREAM_LOAD_US = 10_000_000;
   protected final SequenceableLoader[] loaders;
 
   public CompositeSequenceableLoader(SequenceableLoader[] loaders) {
@@ -77,8 +78,13 @@ public class CompositeSequenceableLoader implements SequenceableLoader {
         boolean isLoaderBehind =
             loaderNextLoadPositionUs != C.TIME_END_OF_SOURCE
                 && loaderNextLoadPositionUs <= loadingInfo.playbackPositionUs;
-        if (loaderNextLoadPositionUs == nextLoadPositionUs || isLoaderBehind) {
-          madeProgressThisIteration |= loader.continueLoading(loadingInfo);
+        boolean isLoaderTooAhead = loaderNextLoadPositionUs != C.TIME_END_OF_SOURCE
+            && ((loaderNextLoadPositionUs - loadingInfo.playbackPositionUs) > DEFAULT_MAX_UPSTREAM_LOAD_US);
+        boolean isEnhancement = loader.isEnhancement();
+        boolean shallContinueLoading = loaderNextLoadPositionUs == nextLoadPositionUs || isLoaderBehind || (isEnhancement && !isLoaderTooAhead);
+        if (shallContinueLoading) {
+          boolean continueLoading = loader.continueLoading(loadingInfo);
+          madeProgressThisIteration |= continueLoading;
         }
       }
       madeProgress |= madeProgressThisIteration;

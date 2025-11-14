@@ -132,6 +132,11 @@ public interface ExoTrackSelection extends TrackSelection {
   /** Returns the index of the selected track. */
   int getSelectedIndex();
 
+  /** Returns the index of the adaptive selected track. */
+  default int getSelectedAdaptiveIndex() {
+    return getSelectedIndex();
+  }
+
   /** Returns the reason for the current track selection. */
   @C.SelectionReason
   int getSelectionReason();
@@ -301,5 +306,17 @@ public interface ExoTrackSelection extends TrackSelection {
    */
   default long getLatestBitrateEstimate() {
     return C.RATE_UNSET_INT;
+  }
+
+  default void setScalableBase(ExoTrackSelection scalableBase) {}
+
+  default @Nullable ExoTrackSelection getScalableBase() {
+    return null;
+  }
+
+  default void setParent(ExoTrackSelection parent) {}
+
+  default @Nullable ExoTrackSelection getParent() {
+    return null;
   }
 }

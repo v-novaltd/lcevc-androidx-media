@@ -24,6 +24,8 @@ import android.os.Handler;
 import android.os.Looper;
 import androidx.annotation.IntDef;
 import androidx.annotation.Nullable;
+import androidx.media3.common.C;
+import androidx.media3.common.MimeTypes;
 import androidx.media3.common.util.Log;
 import androidx.media3.common.util.UnstableApi;
 import androidx.media3.exoplayer.audio.AudioRendererEventListener;
@@ -581,7 +583,9 @@ public class DefaultRenderersFactory implements RenderersFactory {
       Handler eventHandler,
       @ExtensionRendererMode int extensionRendererMode,
       ArrayList<Renderer> out) {
-    // Do nothing.
+    DummyRenderer dummyRenderer = new DummyRenderer(
+        C.TRACK_TYPE_VIDEO_SCALABLE_BASE, MimeTypes.VIDEO_LCEVC);
+    out.add(dummyRenderer);
   }
 
   /**

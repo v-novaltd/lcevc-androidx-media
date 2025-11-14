@@ -81,7 +81,7 @@ public final class LcevcConfig {
       Log.i(TAG, "bitdepthChroma = " + bitdepthChroma);
       readByte = data.readUnsignedByte();
       int nalUnitLengthFieldLength = ((readByte >> 6) & 0b11) + 1;
-      if (nalUnitLengthFieldLength < 4) {
+      if (nalUnitLengthFieldLength == 3) {
         throw new IllegalStateException(TAG + ": parsed unexpected nalUnitLengthFieldLength = " + nalUnitLengthFieldLength);
       }
       Log.i(TAG, "nalUnitLengthFieldLength = " + nalUnitLengthFieldLength);

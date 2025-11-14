@@ -34,6 +34,7 @@ import androidx.media3.common.AudioAttributes;
 import androidx.media3.common.C;
 import androidx.media3.common.ErrorMessageProvider;
 import androidx.media3.common.MediaItem;
+import androidx.media3.common.MimeTypes;
 import androidx.media3.common.PlaybackException;
 import androidx.media3.common.Player;
 import androidx.media3.common.TrackSelectionParameters;
@@ -130,7 +131,15 @@ public class PlayerActivity extends AppCompatActivity
       restoreServerSideAdsLoaderState(savedInstanceState);
     } else {
       boolean isTunnelingEnabled = BuildConfig.SET_TUNNELING;
-      trackSelectionParameters = new DefaultTrackSelector.Parameters.Builder(this).setTunnelingEnabled(isTunnelingEnabled).build();
+      trackSelectionParameters = new DefaultTrackSelector.Parameters.Builder(this)
+          .setTunnelingEnabled(isTunnelingEnabled)
+          .setPreferredVideoMimeTypes(
+              MimeTypes.concatenateSubtype(MimeTypes.VIDEO_LCEVC, MimeTypes.VIDEO_H264),
+              MimeTypes.concatenateSubtype(MimeTypes.VIDEO_LCEVC, MimeTypes.VIDEO_H265),
+              MimeTypes.concatenateSubtype(MimeTypes.VIDEO_LCEVC, MimeTypes.VIDEO_AV1),
+              MimeTypes.concatenateSubtype(MimeTypes.VIDEO_LCEVC, MimeTypes.VIDEO_VP8),
+              MimeTypes.concatenateSubtype(MimeTypes.VIDEO_LCEVC, MimeTypes.VIDEO_VP9))
+          .build();
       clearStartPosition();
     }
   }

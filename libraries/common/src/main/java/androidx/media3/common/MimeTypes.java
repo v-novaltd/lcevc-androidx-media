@@ -15,6 +15,8 @@
  */
 package androidx.media3.common;
 
+import static androidx.media3.common.util.Assertions.checkArgument;
+
 import android.text.TextUtils;
 import androidx.annotation.Nullable;
 import androidx.annotation.VisibleForTesting;
@@ -671,12 +673,42 @@ public final class MimeTypes {
   }
 
   /**
+   * From two {@code mimeType}s of the same type creates a new one with concatenated subtypes,
+   * using '-' as separator, E.g. video/one and video/two will return video/one-two.
+   *
+   * @param firstMimeType A first MIME type.
+   * @param secondMimeType A second MIME type.
+   * @return A MIME type, with same type of the inputs and '-' concatenated subtypes.
+   */
+  public static String concatenateSubtype(String firstMimeType, String secondMimeType) {
+    checkArgument(firstMimeType != null);
+    checkArgument(secondMimeType != null);
+    checkArgument(!firstMimeType.equalsIgnoreCase(secondMimeType));
+    String firstMimeTypeType = firstMimeType.substring(0, firstMimeType.indexOf('/'));
+    String secondMimeTypeType = secondMimeType.substring(0, secondMimeType.indexOf('/'));
+    checkArgument(firstMimeTypeType.equalsIgnoreCase(secondMimeTypeType));
+    String secondMimeTypeSubtype = secondMimeType.substring(secondMimeType.indexOf('/') + 1);
+    return firstMimeType + "-" + secondMimeTypeSubtype;
+  }
+
+  public static String getBase(String mimeType) {
+    checkArgument(mimeType != null);
+    int indexOfSlash = mimeType.indexOf('/');
+    checkArgument(indexOfSlash > 0);
+    int indexOfDash = mimeType.indexOf('-');
+    if (indexOfDash > indexOfSlash) {
+      return mimeType.substring(0, indexOfSlash + 1) + mimeType.substring(indexOfDash + 1);
+    }
+    return mimeType;
+  }
+
+  /**
    * Returns the top-level type of {@code mimeType}, or null if {@code mimeType} is null or does not
    * contain a forward slash character ({@code '/'}).
    */
   @UnstableApi
   @Nullable
-  private static String getTopLevelType(@Nullable String mimeType) {
+  public static String getTopLevelType(@Nullable String mimeType) {
     if (mimeType == null) {
       return null;
     }

@@ -334,6 +334,10 @@ import java.util.List;
     }
 
     TkhdData tkhdData = parseTkhd(checkNotNull(trak.getLeafAtomOfType(Atom.TYPE_tkhd)).data);
+    if (tkhdData.id == scalableBaseId) {
+      // Scalable base id cannot be the same track id, so reset it
+      scalableBaseId = Track.SCALABLE_BASE_UNSET;
+    }
     if (duration == C.TIME_UNSET) {
       duration = tkhdData.duration;
     }
@@ -1283,21 +1287,21 @@ import java.util.List;
         colorTransfer = hevcConfig.colorTransfer;
         bitdepthLuma = hevcConfig.bitdepthLuma;
         bitdepthChroma = hevcConfig.bitdepthChroma;
-        } else if (childAtomType == Atom.TYPE_vvcC) {
-          ExtractorUtil.checkContainerInput(mimeType == null, /* message= */ null);
-          mimeType = MimeTypes.VIDEO_H266;
-          parent.setPosition(childStartPosition + Atom.HEADER_SIZE);
-          if (childAtomSize > Atom.HEADER_SIZE) {
-              VvcConfig vvcConfig = VvcConfig.parse(parent);
-              initializationData = vvcConfig.initializationData;
-              out.nalUnitLengthFieldLength = vvcConfig.nalUnitLengthFieldLength;
-              if (!pixelWidthHeightRatioFromPasp) {
-                  pixelWidthHeightRatio = vvcConfig.pixelWidthAspectRatio;
-              }
-              codecs = vvcConfig.codecs;
-              bitdepthLuma = vvcConfig.bitdepthLuma;
-              bitdepthChroma = vvcConfig.bitdepthChroma;
+      } else if (childAtomType == Atom.TYPE_vvcC) {
+        ExtractorUtil.checkContainerInput(mimeType == null, /* message= */ null);
+        mimeType = MimeTypes.VIDEO_H266;
+        parent.setPosition(childStartPosition + Atom.HEADER_SIZE);
+        if (childAtomSize > Atom.HEADER_SIZE) {
+          VvcConfig vvcConfig = VvcConfig.parse(parent);
+          initializationData = vvcConfig.initializationData;
+          out.nalUnitLengthFieldLength = vvcConfig.nalUnitLengthFieldLength;
+          if (!pixelWidthHeightRatioFromPasp) {
+            pixelWidthHeightRatio = vvcConfig.pixelWidthAspectRatio;
           }
+          codecs = vvcConfig.codecs;
+          bitdepthLuma = vvcConfig.bitdepthLuma;
+          bitdepthChroma = vvcConfig.bitdepthChroma;
+        }
       } else if (childAtomType == Atom.TYPE_lvcC) {
         ExtractorUtil.checkContainerInput(mimeType == null, /* message= */ null);
         mimeType = MimeTypes.VIDEO_LCEVC;

@@ -687,6 +687,7 @@ public class DashManifestParser extends DefaultHandler
       boolean dvbProfileDeclared)
       throws XmlPullParserException, IOException {
     String id = xpp.getAttributeValue(null, "id");
+    String dependencyId = xpp.getAttributeValue(null, "dependencyId");
     int bandwidth = parseInt(xpp, "bandwidth", Format.NO_VALUE);
 
     String mimeType = parseString(xpp, "mimeType", adaptationSetMimeType);
@@ -789,7 +790,8 @@ public class DashManifestParser extends DefaultHandler
         inbandEventStreams,
         essentialProperties,
         supplementalProperties,
-        Representation.REVISION_ID_DEFAULT);
+        Representation.REVISION_ID_DEFAULT,
+        dependencyId);
   }
 
   protected Format buildFormat(
@@ -884,7 +886,8 @@ public class DashManifestParser extends DefaultHandler
         inbandEventStreams,
         representationInfo.essentialProperties,
         representationInfo.supplementalProperties,
-        /* cacheKey= */ null);
+        /* cacheKey= */ null,
+        representationInfo.dependencyId);
   }
 
   // SegmentBase, SegmentList and SegmentTemplate parsing.
@@ -2080,7 +2083,7 @@ public class DashManifestParser extends DefaultHandler
     public final long revisionId;
     public final List<Descriptor> essentialProperties;
     public final List<Descriptor> supplementalProperties;
-
+    public final String dependencyId;
     public RepresentationInfo(
         Format format,
         List<BaseUrl> baseUrls,
@@ -2090,7 +2093,8 @@ public class DashManifestParser extends DefaultHandler
         ArrayList<Descriptor> inbandEventStreams,
         List<Descriptor> essentialProperties,
         List<Descriptor> supplementalProperties,
-        long revisionId) {
+        long revisionId,
+        @Nullable String dependencyId) {
       this.format = format;
       this.baseUrls = ImmutableList.copyOf(baseUrls);
       this.segmentBase = segmentBase;
@@ -2100,6 +2104,7 @@ public class DashManifestParser extends DefaultHandler
       this.essentialProperties = essentialProperties;
       this.supplementalProperties = supplementalProperties;
       this.revisionId = revisionId;
+      this.dependencyId = dependencyId;
     }
   }
 }

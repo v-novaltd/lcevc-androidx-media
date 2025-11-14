@@ -54,6 +54,14 @@ public abstract class BaseTrackSelection implements ExoTrackSelection {
   // Lazily initialized hashcode.
   private int hashCode;
 
+  /** The scalable base if this selection depends on a scalable base one. */
+  @Nullable
+  protected ExoTrackSelection scalableBase;
+
+  /** The parent that determines the selection is this is a scalable base for another selection. */
+  @Nullable
+  protected ExoTrackSelection parent;
+
   /**
    * @param group The {@link TrackGroup}. Must not be null.
    * @param tracks The indices of the selected tracks within the {@link TrackGroup}. Must not be
@@ -141,7 +149,7 @@ public abstract class BaseTrackSelection implements ExoTrackSelection {
 
   @Override
   public final Format getSelectedFormat() {
-    return formats[getSelectedIndex()];
+    return formats[getSelectedAdaptiveIndex()];
   }
 
   @Override
@@ -211,5 +219,35 @@ public abstract class BaseTrackSelection implements ExoTrackSelection {
     }
     BaseTrackSelection other = (BaseTrackSelection) obj;
     return group.equals(other.group) && Arrays.equals(tracks, other.tracks);
+  }
+
+  @Override
+  public void setScalableBase(ExoTrackSelection scalableBase) {
+    if (scalableBase == this) {
+      throw new IllegalArgumentException("cannot set scalable base of itself");
+    }
+    this.scalableBase = scalableBase;
+    scalableBase.setParent(this);
+  }
+
+  @Override
+  public void setParent(ExoTrackSelection parent) {
+    this.parent = parent;
+  }
+  @Nullable
+  @Override
+  public ExoTrackSelection getScalableBase() {
+    return scalableBase;
+  }
+
+  public void maybeSwitchToScalableBase(int index) {
+    if (formats[index].scalableBase != null) {
+      formats[index] = formats[index].scalableBase;
+      int newTrackIndex = group.indexOf(formats[index]);
+      if (newTrackIndex == C.INDEX_UNSET) {
+        throw new RuntimeException("switchToScalableBase failed for format " + formats[index]);
+      }
+      tracks[index] = newTrackIndex;
+    }
   }
 }

@@ -43,6 +43,36 @@ public final class LcevcSynchronousMediaCodecAdapter implements MediaCodecAdapte
 
     private boolean mInBandLcevcData;
 
+    public static class FloatToFraction {
+        private FloatToFraction() {
+            throw new IllegalStateException("Class shall not be instantiated");
+        }
+
+        private static int gcd(int a, int b) {
+            return b == 0 ? a : gcd(b, a % b);
+        }
+
+        public static int[] getFraction(float value) {
+            final int precision = 1000000;
+            int sign = value < 0 ? -1 : 1;
+            value = Math.abs(value);
+
+            int integerPart = (int) value;
+            float fractionalPart = value - integerPart;
+
+            int numerator = Math.round(fractionalPart * precision);
+            int denominator = precision;
+
+            int divisor = gcd(numerator, denominator);
+            numerator /= divisor;
+            denominator /= divisor;
+
+            numerator = sign * (integerPart * denominator + numerator);
+
+            return new int[] { numerator, denominator };
+        }
+    }
+
     /**
      * A factory for {@link LcevcSynchronousMediaCodecAdapter} instances.
      */
@@ -88,7 +118,10 @@ public final class LcevcSynchronousMediaCodecAdapter implements MediaCodecAdapte
     private LcevcSynchronousMediaCodecAdapter(MediaCodec mediaCodec, Configuration configuration) {
         mCodec = mediaCodec;
         mFormat = configuration.format;
-        mDecodeInformation = new LcevcNativeAdapter.DecodeInformation(mFormat.width, mFormat.height);
+        int[] sar = FloatToFraction.getFraction(mFormat.pixelWidthHeightRatio);
+        int bitdepth = mFormat.colorInfo != null ? mFormat.colorInfo.lumaBitdepth : 8;
+        mDecodeInformation = new LcevcNativeAdapter.DecodeInformation(
+            mFormat.width, mFormat.height, sar[0], sar[1], bitdepth);
 
         mLcevcDecoder = new LcevcDecoder(mediaCodec);
         if (!mLcevcDecoder.createDecoder()) {
@@ -123,7 +156,7 @@ public final class LcevcSynchronousMediaCodecAdapter implements MediaCodecAdapte
         LcevcDecoder.BufferDetails nextDecodedDetails = mLcevcDecoder.peekNextDecodedDetails();
         if (nextDecodedDetails != null && nextDecodedDetails.info.flags != MediaCodec.BUFFER_FLAG_END_OF_STREAM) {
             LcevcNativeAdapter.DecodeInformation decodeInformation = mLcevcDecoder.getDecodeInformation(nextDecodedDetails.info.presentationTimeUs);
-            if (decodeInformation != null && decodeInformation.isValid() && !decodeInformation.equalSize(mDecodeInformation)) {
+            if (decodeInformation != null && decodeInformation.isValid() && !decodeInformation.equals(mDecodeInformation)) {
                 mDecodeInformation.set(decodeInformation);
                 return MediaCodec.INFO_OUTPUT_FORMAT_CHANGED;
             }
@@ -160,11 +193,10 @@ public final class LcevcSynchronousMediaCodecAdapter implements MediaCodecAdapte
     @Override
     public MediaFormat getOutputFormat() {
         MediaFormat mediaFormat = mCodec.getOutputFormat();
-        if (mDecodeInformation.width != 0 && mDecodeInformation.height != 0) {
+        if (mDecodeInformation.isValid()) {
             mediaFormat = MediaFormat.createVideoFormat(mediaFormat.getString(MediaFormat.KEY_MIME), mDecodeInformation.width, mDecodeInformation.height);
-            // FIXME: get LCEVC enhanced sample aspect ratio from decode information
-            mediaFormat.setInteger(MediaFormat.KEY_PIXEL_ASPECT_RATIO_WIDTH, 1);
-            mediaFormat.setInteger(MediaFormat.KEY_PIXEL_ASPECT_RATIO_HEIGHT, 1);
+            mediaFormat.setInteger(MediaFormat.KEY_PIXEL_ASPECT_RATIO_WIDTH, (int)mDecodeInformation.sar_num);
+            mediaFormat.setInteger(MediaFormat.KEY_PIXEL_ASPECT_RATIO_HEIGHT, (int)mDecodeInformation.sar_den);
         }
         return mediaFormat;
     }

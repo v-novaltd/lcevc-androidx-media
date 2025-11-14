@@ -63,21 +63,32 @@ android {
         noDecoderExtensions {
             dimension "decoderExtensions"
             buildConfigField "boolean", "USE_DECODER_EXTENSIONS", "false"
+            buildConfigField "boolean", "SET_TUNNELING", "false"
+        }
+        noDecoderExtensionsWithTunneling {
+            dimension "decoderExtensions"
+            buildConfigField "boolean", "USE_DECODER_EXTENSIONS", "false"
+            buildConfigField "boolean", "SET_TUNNELING", "true"
         }
         // This will enable all extensions excluding the MPEG-5 Part 2 (LCEVC) one
         withDecoderExtensions {
             dimension "decoderExtensions"
             buildConfigField "boolean", "USE_DECODER_EXTENSIONS", "true"
+            buildConfigField "boolean", "SET_TUNNELING", "false"
         }
         // This will enable all extensions including the MPEG-5 Part 2 (LCEVC) one
         withDecoderExtensionsWithLcevc {
             dimension "decoderExtensions"
             buildConfigField "boolean", "USE_DECODER_EXTENSIONS", "true"
+            buildConfigField "boolean", "SET_TUNNELING", "false"
         }
     }
 
     sourceSets {
         noDecoderExtensions {
+            java.srcDirs = ['src/main']
+        }
+        noDecoderExtensionsWithTunneling {
             java.srcDirs = ['src/main']
         }
         withDecoderExtensions {
@@ -88,6 +99,7 @@ android {
             main {
                 java {
                     exclude '**/DemoUtil.java'
+                    exclude '**/PlayerActivity.java'
                 }
             }
         }

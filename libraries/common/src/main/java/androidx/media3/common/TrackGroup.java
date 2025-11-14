@@ -131,7 +131,7 @@ public final class TrackGroup implements Bundleable {
   @UnstableApi
   public int indexOf(Format format) {
     for (int i = 0; i < formats.length; i++) {
-      if (format == formats[i]) {
+      if (format.equals(formats[i])) {
         return i;
       }
     }

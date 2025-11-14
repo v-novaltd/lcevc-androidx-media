@@ -30,6 +30,8 @@ import androidx.media3.datasource.cache.SimpleCache;
 import androidx.media3.datasource.cronet.CronetDataSource;
 import androidx.media3.datasource.cronet.CronetUtil;
 import androidx.media3.exoplayer.DefaultRenderersFactory;
+import androidx.media3.exoplayer.mediacodec.MediaCodecSelector;
+import com.vnova.lcevc.decoder.LcevcMediaCodecSelector;
 import com.vnova.lcevc.decoder.LcevcRenderersFactory;
 import androidx.media3.exoplayer.RenderersFactory;
 import androidx.media3.exoplayer.offline.DownloadManager;
@@ -84,8 +86,10 @@ public final class DemoUtil {
                 ? DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER
                 : DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
             : DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF;
+    MediaCodecSelector lcevcMediaCodecSelector = new LcevcMediaCodecSelector();
     return new LcevcRenderersFactory(context.getApplicationContext())
-        .setExtensionRendererMode(extensionRendererMode);
+        .setExtensionRendererMode(extensionRendererMode)
+        .setMediaCodecSelector(lcevcMediaCodecSelector);
   }
 
   public static synchronized DataSource.Factory getHttpDataSourceFactory(Context context) {

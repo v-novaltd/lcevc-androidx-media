@@ -37,6 +37,7 @@ import androidx.media3.extractor.SeekMap;
 import androidx.media3.extractor.TrackOutput;
 import androidx.media3.extractor.mkv.MatroskaExtractor;
 import androidx.media3.extractor.mp4.FragmentedMp4Extractor;
+import androidx.media3.extractor.mp4.Track;
 import androidx.media3.extractor.text.SubtitleParser;
 import androidx.media3.extractor.text.SubtitleTranscodingExtractor;
 import java.io.IOException;
@@ -192,6 +193,11 @@ public final class BundledChunkExtractor implements ExtractorOutput, ChunkExtrac
 
   @Override
   public TrackOutput track(int id, int type) {
+    return track(id, type, Track.SCALABLE_BASE_UNSET);
+  }
+
+  @Override
+  public TrackOutput track(int id, int type, int scalableBaseId) {
     BindingTrackOutput bindingTrackOutput = bindingTrackOutputs.get(id);
     if (bindingTrackOutput == null) {
       // Assert that if we're seeing a new track we have not seen endTracks.
@@ -199,7 +205,7 @@ public final class BundledChunkExtractor implements ExtractorOutput, ChunkExtrac
       // TODO: Manifest formats for embedded tracks should also be passed here.
       bindingTrackOutput =
           new BindingTrackOutput(
-              id, type, type == primaryTrackType ? primaryTrackManifestFormat : null);
+              id, type, scalableBaseId, type == primaryTrackType ? primaryTrackManifestFormat : null);
       bindingTrackOutput.bind(trackOutputProvider, endTimeUs);
       bindingTrackOutputs.put(id, bindingTrackOutput);
     }
@@ -208,14 +214,11 @@ public final class BundledChunkExtractor implements ExtractorOutput, ChunkExtrac
 
   @Override
   public void endTracks() {
-    List<Format> sampleFormats = new ArrayList<>();
+    Format[] sampleFormats = new Format[bindingTrackOutputs.size()];
     for (int i = 0; i < bindingTrackOutputs.size(); i++) {
-      BundledChunkExtractor.BindingTrackOutput trackOutput = bindingTrackOutputs.valueAt(i);
-      if (!trackOutput.isEnhancement() && trackOutput.sampleFormat != null) {
-        sampleFormats.add(trackOutput.sampleFormat);
-      }
+      sampleFormats[i] = Assertions.checkStateNotNull(bindingTrackOutputs.valueAt(i).sampleFormat);
     }
-    this.sampleFormats = sampleFormats.toArray(new Format[0]);
+    this.sampleFormats = sampleFormats;
   }
 
   @Override
@@ -229,6 +232,7 @@ public final class BundledChunkExtractor implements ExtractorOutput, ChunkExtrac
 
     private final int id;
     private final int type;
+    private final int scalableBaseId;
     @Nullable private final Format manifestFormat;
     private final DummyTrackOutput fakeTrackOutput;
 
@@ -236,9 +240,10 @@ public final class BundledChunkExtractor implements ExtractorOutput, ChunkExtrac
     private @MonotonicNonNull TrackOutput trackOutput;
     private long endTimeUs;
 
-    public BindingTrackOutput(int id, int type, @Nullable Format manifestFormat) {
+    public BindingTrackOutput(int id, int type, int scalableBaseId, @Nullable Format manifestFormat) {
       this.id = id;
       this.type = type;
+      this.scalableBaseId = scalableBaseId;
       this.manifestFormat = manifestFormat;
       fakeTrackOutput = new DummyTrackOutput();
     }
@@ -249,7 +254,7 @@ public final class BundledChunkExtractor implements ExtractorOutput, ChunkExtrac
         return;
       }
       this.endTimeUs = endTimeUs;
-      trackOutput = trackOutputProvider.track(id, type);
+      trackOutput = trackOutputProvider.track(id, type, scalableBaseId);
       if (sampleFormat != null) {
         trackOutput.format(sampleFormat);
       }
@@ -288,12 +293,12 @@ public final class BundledChunkExtractor implements ExtractorOutput, ChunkExtrac
     }
 
     @Override
-    public final void attachEnhancement(TrackOutput enhancement) {
-      castNonNull(trackOutput).attachEnhancement(((BindingTrackOutput)(castNonNull(enhancement))).trackOutput);
+    public void attachScalableBase(TrackOutput scalableBase) {
+      castNonNull(trackOutput).attachScalableBase(((BindingTrackOutput)(castNonNull(scalableBase))).trackOutput);
     }
 
     @Override
-    public final boolean isEnhancement() {
+    public boolean isEnhancement() {
       return castNonNull(trackOutput).isEnhancement();
     }
   }

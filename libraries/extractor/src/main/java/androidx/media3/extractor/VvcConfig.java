@@ -13,6 +13,7 @@ import androidx.media3.extractor.ts.H266Reader;
 import androidx.media3.extractor.ts.NalUnitTargetBuffer;
 import androidx.media3.common.util.Log;
 import androidx.media3.common.util.ParsableByteArray;
+import java.util.ArrayList;
 import java.util.List;
 
 public final class VvcConfig {
@@ -49,6 +50,7 @@ public final class VvcConfig {
   public static VvcConfig parse(ParsableByteArray data) throws ParserException {
     VvcConfig vvcConfig = null;
     int lengthSizeMinusOne = 0;
+    int bitDepthMinusEight = 0;
 
     vps = new NalUnitTargetBuffer(VPS_NUT, 128);
     sps = new NalUnitTargetBuffer(SPS_NUT, 128);
@@ -73,6 +75,8 @@ public final class VvcConfig {
         int numSublayers = (val >> 4) & 0b111;
         Log.d(TAG, "numSublayers=" + numSublayers);
         val = data.readUnsignedByte();
+        bitDepthMinusEight = (val >> 5) & 0b111;
+        Log.d(TAG, "bitDepthMinusEight=" + bitDepthMinusEight);
         if ((val & 0b11111) != 0b11111) {
           throw ParserException.createForMalformedDataOfUnknownType("VvcDecoderConfigurationRecord 2nd reserved bits not found", null);
         }
@@ -139,8 +143,13 @@ public final class VvcConfig {
 
     Format format = H266Reader.parseMediaFormat(null, vps, sps, pps);
 
+    ColorInfo colorInfo = (format != null && format.colorInfo != null) ? format.colorInfo
+        : new ColorInfo.Builder()
+            .setLumaBitdepth(bitDepthMinusEight + 8)
+            .setChromaBitdepth(bitDepthMinusEight + 8)
+            .build();
+
     if (format != null) {
-      ColorInfo colorInfo = format.colorInfo != null ? format.colorInfo : new ColorInfo.Builder().build();
       vvcConfig = new VvcConfig(format.initializationData,
           lengthSizeMinusOne + 1,
           format.width,
@@ -149,6 +158,15 @@ public final class VvcConfig {
           colorInfo.chromaBitdepth,
           format.pixelWidthHeightRatio,
           format.codecs);
+    } else {
+      vvcConfig = new VvcConfig(new ArrayList<byte[]>(0),
+          lengthSizeMinusOne + 1,
+          0,
+          0,
+          colorInfo.lumaBitdepth,
+          colorInfo.chromaBitdepth,
+          1.0f,
+          null);
     }
     return vvcConfig;
   }

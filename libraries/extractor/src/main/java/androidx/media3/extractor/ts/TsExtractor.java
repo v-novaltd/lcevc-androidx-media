@@ -39,6 +39,7 @@ import androidx.media3.extractor.ExtractorsFactory;
 import androidx.media3.extractor.PositionHolder;
 import androidx.media3.extractor.SeekMap;
 import androidx.media3.extractor.TrackOutput;
+import androidx.media3.extractor.mp4.Track;
 import androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory.Flags;
 import androidx.media3.extractor.ts.TsPayloadReader.DvbSubtitleInfo;
 import androidx.media3.extractor.ts.TsPayloadReader.EsInfo;
@@ -88,6 +89,8 @@ public final class TsExtractor implements Extractor {
 
   public static final int TS_STREAM_TYPE_MPA = 0x03;
   public static final int TS_STREAM_TYPE_MPA_LSF = 0x04;
+  public static final int TS_STREAM_TYPE_PRIVATE_SECTIONS = 0x05;
+  public static final int TS_STREAM_TYPE_PES_PRIVATE = 0x06;
   public static final int TS_STREAM_TYPE_AAC_ADTS = 0x0F;
   public static final int TS_STREAM_TYPE_AAC_LATM = 0x11;
   public static final int TS_STREAM_TYPE_AC3 = 0x81;
@@ -305,8 +308,9 @@ public final class TsExtractor implements Extractor {
   public @ReadResult int read(ExtractorInput input, PositionHolder seekPosition)
       throws IOException {
     long inputLength = input.getLength();
+    boolean isModeHls = mode == MODE_HLS;
     if (tracksEnded) {
-      boolean canReadDuration = inputLength != C.LENGTH_UNSET && mode != MODE_HLS;
+      boolean canReadDuration = inputLength != C.LENGTH_UNSET && !isModeHls;
       if (canReadDuration && !durationReader.isDurationReadFinished()) {
         return durationReader.readDuration(input, seekPosition, pcrPid);
       }
@@ -327,11 +331,14 @@ public final class TsExtractor implements Extractor {
     }
 
     if (!fillBufferWithAtLeastOnePacket(input)) {
-      // Send a synthesised empty pusi to allow for packetFinished to be triggered on the last unit.
+      // Send a synthesized empty pusi to allow for packetFinished to be triggered on the last unit.
       for (int i = 0; i < tsPayloadReaders.size(); i++) {
         TsPayloadReader payloadReader = tsPayloadReaders.valueAt(i);
         if (payloadReader instanceof PesReader) {
-          payloadReader.consume(new ParsableByteArray(), FLAG_PAYLOAD_UNIT_START_INDICATOR);
+          PesReader pesReader = (PesReader) payloadReader;
+          if (pesReader.canConsumeSynthesizedEmptyPusi(isModeHls)) {
+            pesReader.consume(new ParsableByteArray(), FLAG_PAYLOAD_UNIT_START_INDICATOR);
+          }
         }
       }
       return RESULT_END_OF_INPUT;
@@ -565,18 +572,23 @@ public final class TsExtractor implements Extractor {
     private static final int TS_PMT_DESC_DTS = 0x7B;
     private static final int TS_PMT_DESC_DVB_EXT = 0x7F;
     private static final int TS_PMT_DESC_DVBSUBS = 0x59;
+    private static final int TS_PMT_DESC_EXTENSION = 0x3F;
+    private static final int TS_PMT_DESC_EXTENSION_LCEVC_VIDEO = 0x17;
+    private static final int TS_PMT_DESC_EXTENSION_LCEVC_LINKAGE = 0x18;
 
     private static final int TS_PMT_DESC_DVB_EXT_AC4 = 0x15;
 
     private final ParsableBitArray pmtScratch;
     private final SparseArray<@NullableType TsPayloadReader> trackIdToReaderScratch;
     private final SparseIntArray trackIdToPidScratch;
+    private final SparseIntArray trackIdToScalableBaseScratch;
     private final int pid;
 
     public PmtReader(int pid) {
       pmtScratch = new ParsableBitArray(new byte[5]);
       trackIdToReaderScratch = new SparseArray<>();
       trackIdToPidScratch = new SparseIntArray();
+      trackIdToScalableBaseScratch = new SparseIntArray();
       this.pid = pid;
     }
 
@@ -636,7 +648,7 @@ public final class TsExtractor implements Extractor {
       if (mode == MODE_HLS && id3Reader == null) {
         // Setup an ID3 track regardless of whether there's a corresponding entry, in case one
         // appears intermittently during playback. See [Internal: b/20261500].
-        EsInfo id3EsInfo = new EsInfo(TS_STREAM_TYPE_ID3, null, null, Util.EMPTY_BYTE_ARRAY);
+        EsInfo id3EsInfo = new EsInfo(TS_STREAM_TYPE_ID3, null, null, null, Util.EMPTY_BYTE_ARRAY);
         id3Reader = payloadReaderFactory.createPayloadReader(TS_STREAM_TYPE_ID3, id3EsInfo);
         if (id3Reader != null) {
           id3Reader.init(
@@ -648,7 +660,9 @@ public final class TsExtractor implements Extractor {
 
       trackIdToReaderScratch.clear();
       trackIdToPidScratch.clear();
+      trackIdToScalableBaseScratch.clear();
       int remainingEntriesLength = sectionData.bytesLeft();
+      SparseArray<EsInfo> trackIdToEsInfosScratch = new SparseArray<>();
       while (remainingEntriesLength > 0) {
         sectionData.readBytes(pmtScratch, 5);
         int streamType = pmtScratch.readBits(8);
@@ -657,7 +671,7 @@ public final class TsExtractor implements Extractor {
         pmtScratch.skipBits(4); // reserved
         int esInfoLength = pmtScratch.readBits(12); // ES_info_length.
         EsInfo esInfo = readEsInfo(sectionData, esInfoLength);
-        if (streamType == 0x06 || streamType == 0x05) {
+        if (streamType == TS_STREAM_TYPE_PES_PRIVATE || streamType == TS_STREAM_TYPE_PRIVATE_SECTIONS) {
           streamType = esInfo.streamType;
         }
         remainingEntriesLength -= esInfoLength + 5;
@@ -677,9 +691,33 @@ public final class TsExtractor implements Extractor {
           trackIdToPidScratch.put(trackId, elementaryPid);
           trackIdToReaderScratch.put(trackId, reader);
         }
+        trackIdToEsInfosScratch.put(trackId, new EsInfo(streamType, null, null, esInfo.lcevcStreamTags, null));
       }
 
       int trackIdCount = trackIdToPidScratch.size();
+
+      // Find possible scalable base for each trackId
+      for (int i = 0; i < trackIdCount; i++) {
+        EsInfo esInfo = trackIdToEsInfosScratch.valueAt(i);
+        if (esInfo.streamType == TS_STREAM_TYPE_LCEVC) {
+          // LCEVC ES has only one lcevc_stream_tag
+          Assertions.checkArgument(esInfo.lcevcStreamTags.size() == 1);
+          int lcevcStreamTag = esInfo.lcevcStreamTags.get(0);
+          for (int j = 0; j < trackIdCount; j++) {
+            if (j == i) {
+              continue;
+            }
+            EsInfo esInfoBase = trackIdToEsInfosScratch.valueAt(j);
+            if (esInfoBase.lcevcStreamTags.contains(lcevcStreamTag)) {
+              int lcevcTrackId = trackIdToEsInfosScratch.keyAt(i);
+              int baseTrackId = trackIdToEsInfosScratch.keyAt(j);
+              trackIdToScalableBaseScratch.put(lcevcTrackId, baseTrackId);
+              break;
+            }
+          }
+        }
+      }
+
       for (int i = 0; i < trackIdCount; i++) {
         int trackId = trackIdToPidScratch.keyAt(i);
         int trackPid = trackIdToPidScratch.valueAt(i);
@@ -688,10 +726,12 @@ public final class TsExtractor implements Extractor {
         @Nullable TsPayloadReader reader = trackIdToReaderScratch.valueAt(i);
         if (reader != null) {
           if (reader != id3Reader) {
+            int scalableBaseTrackId =
+                trackIdToScalableBaseScratch.get(trackId, Track.SCALABLE_BASE_UNSET);
             reader.init(
                 timestampAdjuster,
                 output,
-                new TrackIdGenerator(programNumber, trackId, MAX_PID_PLUS_ONE));
+                new TrackIdGenerator(programNumber, trackId, MAX_PID_PLUS_ONE), scalableBaseTrackId);
           }
           tsPayloadReaders.put(trackPid, reader);
         }
@@ -727,6 +767,7 @@ public final class TsExtractor implements Extractor {
       int streamType = -1;
       String language = null;
       List<DvbSubtitleInfo> dvbSubtitleInfos = null;
+      List<Integer> lcevcStreamTags = null;
       while (data.getPosition() < descriptorsEndPosition) {
         int descriptorTag = data.readUnsignedByte();
         int descriptorLength = data.readUnsignedByte();
@@ -775,6 +816,18 @@ public final class TsExtractor implements Extractor {
           }
         } else if (descriptorTag == TS_PMT_DESC_AIT) {
           streamType = TS_STREAM_TYPE_AIT;
+        } else if (descriptorTag == TS_PMT_DESC_EXTENSION) {
+          int extensionDescriptorTag = data.readUnsignedByte();
+          if (extensionDescriptorTag == TS_PMT_DESC_EXTENSION_LCEVC_LINKAGE) {
+            int numLcevcStreamTags = data.readUnsignedByte();
+            lcevcStreamTags = new ArrayList<>();
+            for (int i = 0; i < numLcevcStreamTags; i++) {
+              lcevcStreamTags.add(data.readUnsignedByte());
+            }
+          } else if (extensionDescriptorTag == TS_PMT_DESC_EXTENSION_LCEVC_VIDEO) {
+            lcevcStreamTags = new ArrayList<>();
+            lcevcStreamTags.add(data.readUnsignedByte());
+          }
         }
         // Skip unused bytes of current descriptor.
         data.skipBytes(positionOfNextDescriptor - data.getPosition());
@@ -784,6 +837,7 @@ public final class TsExtractor implements Extractor {
           streamType,
           language,
           dvbSubtitleInfos,
+          lcevcStreamTags,
           Arrays.copyOfRange(data.getData(), descriptorsStartPosition, descriptorsEndPosition));
     }
   }

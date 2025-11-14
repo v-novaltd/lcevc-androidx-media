@@ -29,6 +29,7 @@ import androidx.annotation.Nullable;
 import androidx.annotation.VisibleForTesting;
 import androidx.media3.common.C;
 import androidx.media3.common.C.FormatSupport;
+import androidx.media3.common.Format;
 import androidx.media3.common.Timeline;
 import androidx.media3.common.TrackGroup;
 import androidx.media3.common.Tracks;
@@ -540,7 +541,12 @@ public abstract class MappingTrackSelector extends TrackSelector {
       RendererCapabilities rendererCapabilities, TrackGroup group) throws ExoPlaybackException {
     @Capabilities int[] formatSupport = new int[group.length];
     for (int i = 0; i < group.length; i++) {
-      formatSupport[i] = rendererCapabilities.supportsFormat(group.getFormat(i));
+      Format format = group.getFormat(i);
+      // Override with scalable base if set
+      if (format.scalableBase != null) {
+        format = format.scalableBase;
+      }
+      formatSupport[i] = rendererCapabilities.supportsFormat(format);
     }
     return formatSupport;
   }

@@ -28,9 +28,12 @@ public final class ChunkHolder {
   /** Indicates that the end of the stream has been reached. */
   public boolean endOfStream;
 
+  public boolean idle;
+
   /** Clears the holder. */
   public void clear() {
     chunk = null;
     endOfStream = false;
+    idle = false;
   }
 }

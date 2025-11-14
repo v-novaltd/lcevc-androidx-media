@@ -600,7 +600,7 @@ public final class Mp4Extractor implements Extractor, SeekMap {
         for (int j = 0; j < trackCount; j++) {
           Track maybeBaseTrack = tracks.get(j).track;
           if (maybeBaseTrack.id == track.scalableBaseId) {
-            trackOutputs[j].attachEnhancement(trackOutputs[i]);
+            trackOutputs[i].attachScalableBase(trackOutputs[j]);
             break;
           }
         }

@@ -79,9 +79,11 @@ public class SampleQueue implements TrackOutput {
 
   @Nullable private Format downstreamFormat;
   @Nullable private DrmSession currentDrmSession;
-  @Nullable private SampleQueue enhancedSampleQueue;
-  private boolean isEnhancement;
-
+  private boolean isIdle;
+  private boolean nextIdle;
+  private long nextIdleTimeUs;
+  @Nullable private SampleQueue scalableBaseSampleQueue;
+  @Nullable private SampleQueue parent;
   private int capacity;
   private long[] sourceIds;
   private long[] offsets;
@@ -110,7 +112,7 @@ public class SampleQueue implements TrackOutput {
 
   private long sampleOffsetUs;
   private boolean pendingSplice;
-  private FormatHolder peekFormatHolder;
+  @Nullable private Format partialFormat;
 
   /**
    * Creates a sample queue without DRM resource management.
@@ -185,7 +187,11 @@ public class SampleQueue implements TrackOutput {
     upstreamFormatRequired = true;
     upstreamKeyframeRequired = true;
     allSamplesAreSyncSamples = true;
-    peekFormatHolder = new FormatHolder();
+    isIdle = false;
+    nextIdle = false;
+    nextIdleTimeUs = Long.MAX_VALUE;
+    parent = null;
+    partialFormat = null;
   }
 
   // Called by the consuming thread when there is no loading thread.
@@ -229,19 +235,39 @@ public class SampleQueue implements TrackOutput {
       upstreamFormatRequired = true;
       allSamplesAreSyncSamples = true;
     }
-    enhancedSampleQueue = null;
-    isEnhancement = false;
+    if (isEnhancement() && resetUpstreamFormat) {
+      // Detach scalable base from this
+      scalableBaseSampleQueue = null;
+    }
   }
 
   @Override
-  public final void attachEnhancement(TrackOutput enhancedSampleQueue) {
-    this.enhancedSampleQueue = (SampleQueue)enhancedSampleQueue;
-    this.enhancedSampleQueue.isEnhancement = true;
+  public final void attachScalableBase(TrackOutput scalableBaseSampleQueue) {
+    checkArgument(scalableBaseSampleQueue instanceof SampleQueue, "cannot attach a null or non SampleQueue object");
+    checkArgument(scalableBaseSampleQueue != this, "cannot attach self as scalable base");
+    this.scalableBaseSampleQueue = (SampleQueue) scalableBaseSampleQueue;
+    this.scalableBaseSampleQueue.parent = this;
   }
 
   @Override
-  public final boolean isEnhancement() {
-    return this.isEnhancement;
+  public final synchronized boolean isEnhancement() {
+    return scalableBaseSampleQueue != null;
+  }
+
+  public final synchronized boolean isIdle() {
+    return this.isIdle;
+  }
+
+  public final synchronized boolean isIdleAt(long timeUs) {
+    return timeUs >= nextIdleTimeUs ? nextIdle : isIdle;
+  }
+
+  public final synchronized void scheduleIdle(boolean idle, long timeUs) {
+    checkArgument(isEnhancement(), "cannot schedule idle state on a non enhancement sample queue");
+    if (idle != isIdle && timeUs < nextIdleTimeUs) {
+      nextIdle = idle;
+      nextIdleTimeUs = timeUs;
+    }
   }
 
   /**
@@ -405,7 +431,10 @@ public class SampleQueue implements TrackOutput {
   @SuppressWarnings("ReferenceEquality") // See comments in setUpstreamFormat
   @CallSuper
   public synchronized boolean isReady(boolean loadingFinished) {
-    if (enhancedSampleQueue != null && !enhancedSampleQueue.isReady(loadingFinished)) {
+    if (isIdle()) {
+      return scalableBaseSampleQueue.isReady(loadingFinished);
+    }
+    if (isEnhancement() && !scalableBaseSampleQueue.isReady(loadingFinished)) {
       return false;
     }
     if (!hasNextSample()) {
@@ -444,30 +473,35 @@ public class SampleQueue implements TrackOutput {
       DecoderInputBuffer buffer,
       @ReadFlags int readFlags,
       boolean loadingFinished) {
-    int result = C.RESULT_BUFFER_READ;
-    if (enhancedSampleQueue != null) {
-      result = enhancedSampleQueue.peekSampleReadResult(
+    boolean idleChanged = maybeSwitchIdle();
+    boolean formatRequired = ((readFlags & FLAG_REQUIRE_FORMAT) != 0) || idleChanged;
+    int result = maybePeekScalableBaseSampleMetadata(
+        formatHolder,
+        buffer,
+        formatRequired,
+        loadingFinished);
+    if (result == C.RESULT_BUFFER_READ) {
+      // Peek sample metadata function overwrites the buffer time so save it
+      long scalableBaseBufferTimeUs = buffer.timeUs;
+      result = maybePeekSampleMetadata(
+          formatHolder,
           buffer,
-          false,
+          !isEnhancement() && formatRequired,
           loadingFinished);
-    }
-    if (result != C.RESULT_BUFFER_READ) {
-      return C.RESULT_NOTHING_READ;
-    }
-    long enhancedBufferTimeUs = buffer.timeUs;
-    result = peekSampleMetadata(
-            formatHolder,
-            buffer,
-            /* formatRequired= */ (readFlags & FLAG_REQUIRE_FORMAT) != 0,
-            loadingFinished);
-    if (result == C.RESULT_BUFFER_READ && !buffer.isEndOfStream()) {
-      checkArgument(enhancedSampleQueue == null || buffer.timeUs == enhancedBufferTimeUs,
-          "base timeUs " + buffer.timeUs + " != enhancement timeUs " + enhancedBufferTimeUs);
-
-      if (enhancedSampleQueue != null) {
-        enhancedSampleQueue.readSampleQueue(buffer, readFlags);
+      if (result == C.RESULT_BUFFER_READ && !buffer.isEndOfStream()) {
+        // If the enhancement is LCEVC the HRD spec (ISO/IEC 23094-2 Annex C Hypothetical reference decoder)
+        // states that the enhancement AU data must arrive at the decoder earlier than the base AU data,
+        // however, here there are a few reasons for juxtaposing them in the reverse order:
+        // 1. some MediaCodec implementations ignore the offset passed in the queueInputBuffer()
+        //    and just assume the data start at offset zero, so having the enhancement at the end
+        //    makes it easier to strip it by just passing a reduced buffer size;
+        // 2. base and enhancement may be on different syntax, e.g. OBU on AV1 base and NAL on LCEVC enhancement,
+        //    in which case if the NAL unit is at the end finding its boundaries would still be possible,
+        //    otherwise if the NAL is at the beginning it would not be possible to detect its end.
+        maybeReadScalableBaseSampleQueue(buffer, readFlags);
+        maybeReadSampleQueue(scalableBaseBufferTimeUs, buffer, readFlags);
+        buffer.timeUs = isEnhancement() ? scalableBaseBufferTimeUs : buffer.timeUs;
       }
-      readSampleQueue(buffer, readFlags);
     }
     return result;
   }
@@ -500,9 +534,6 @@ public class SampleQueue implements TrackOutput {
    * @return Whether the seek was successful.
    */
   public final synchronized boolean seekTo(long timeUs, boolean allowTimeBeyondBuffer) {
-    if (enhancedSampleQueue != null) {
-      enhancedSampleQueue.seekTo(timeUs, allowTimeBeyondBuffer);
-    }
     rewind();
     int relativeReadIndex = getRelativeIndex(readPosition);
     if (!hasNextSample()
@@ -556,9 +587,6 @@ public class SampleQueue implements TrackOutput {
    *     most {@link #getWriteIndex()} - {@link #getReadIndex()}.
    */
   public final synchronized void skip(int count) {
-    if (enhancedSampleQueue != null) {
-      enhancedSampleQueue.skip(count);
-    }
     checkArgument(count >= 0 && readPosition + count <= length);
     readPosition += count;
   }
@@ -618,6 +646,10 @@ public class SampleQueue implements TrackOutput {
   @Override
   public final void format(Format format) {
     Format adjustedUpstreamFormat = getAdjustedUpstreamFormat(format);
+    adjustedUpstreamFormat = getMergedUpstreamFormat(adjustedUpstreamFormat);
+    if (adjustedUpstreamFormat == null) {
+      return;
+    }
     upstreamFormatAdjustmentRequired = false;
     unadjustedUpstreamFormat = format;
     boolean upstreamFormatChanged = setUpstreamFormat(adjustedUpstreamFormat);
@@ -686,9 +718,23 @@ public class SampleQueue implements TrackOutput {
     commitSample(timeUs, flags, absoluteOffset, size, cryptoData);
   }
 
-  public int peekSampleReadResult(
-      DecoderInputBuffer buffer, boolean formatRequired, boolean loadingFinished) {
-    return peekSampleMetadata(peekFormatHolder, buffer, formatRequired, loadingFinished);
+  public synchronized void maybeReadSampleQueue(
+      long scalableBaseBufferTimeUs, DecoderInputBuffer buffer, @ReadFlags int readFlags) {
+    if (isIdle()) {
+      return;
+    }
+    if (isEnhancement()) {
+      long enhancementBufferTimeUs = buffer.timeUs;
+      if (enhancementBufferTimeUs < scalableBaseBufferTimeUs) {
+        // This can happen after an adaptive track change, some downstream enhancement samples must
+        // be discarded
+        enhancementBufferTimeUs = advanceReadPositionToKey(scalableBaseBufferTimeUs);
+      }
+      if (enhancementBufferTimeUs != scalableBaseBufferTimeUs) {
+        return;
+      }
+    }
+    readSampleQueue(buffer, readFlags);
   }
 
   public synchronized void readSampleQueue(DecoderInputBuffer buffer, @ReadFlags int readFlags) {
@@ -702,6 +748,21 @@ public class SampleQueue implements TrackOutput {
     }
     if (!peek) {
       readPosition++;
+    }
+  }
+
+  private long advanceReadPositionToKey(long timeUs) {
+    discardTo(timeUs, true, false);
+    int relativeIndex = getRelativeIndex(readPosition);
+    extrasHolder.size = sizes[relativeIndex];
+    extrasHolder.offset = offsets[relativeIndex];
+    extrasHolder.cryptoData = cryptoDatas[relativeIndex];
+    return timesUs[relativeIndex];
+  }
+
+  private synchronized void maybeReadScalableBaseSampleQueue(DecoderInputBuffer buffer, @ReadFlags int readFlags) {
+    if (isEnhancement()) {
+      scalableBaseSampleQueue.readSampleQueue(buffer, readFlags);
     }
   }
 
@@ -735,12 +796,65 @@ public class SampleQueue implements TrackOutput {
     return format;
   }
 
+  protected @Nullable Format getMergedUpstreamFormat(Format format) {
+    Format mergedFormat = format;
+    if (isEnhancement()) {
+      Format baseFormat = scalableBaseSampleQueue.getUpstreamFormat();
+      if (baseFormat == null ||
+          (format.scalableBase != null && !baseFormat.coreEquals(format.scalableBase))) {
+        partialFormat = format;
+        return null;
+      }
+      mergedFormat = format.withScalableBaseFormatInfo(baseFormat);
+    }
+    return mergedFormat;
+  }
+
   // Internal methods.
 
   /** Rewinds the read position to the first sample in the queue. */
   private synchronized void rewind() {
     readPosition = 0;
     sampleDataQueue.rewind();
+    nextIdleTimeUs = Long.MAX_VALUE;
+  }
+
+  private boolean maybeSwitchIdle() {
+    SampleQueue enhancement = (parent != null) ? parent : isEnhancement() ? this : null;
+    if (enhancement == null) {
+      return false;
+    }
+    SampleQueue base = enhancement.scalableBaseSampleQueue;
+    int baseRelativeReadIndex = base.getRelativeIndex(base.readPosition);
+    if (!base.mayReadSample(baseRelativeReadIndex)) {
+      return false;
+    }
+    long baseBufferTimeUs = base.timesUs[baseRelativeReadIndex];
+    if (baseBufferTimeUs == enhancement.nextIdleTimeUs) {
+      enhancement.isIdle = enhancement.nextIdle;
+      enhancement.nextIdleTimeUs = Long.MAX_VALUE;
+      return true;
+    }
+    return false;
+  }
+
+  private synchronized int maybePeekScalableBaseSampleMetadata(
+      FormatHolder formatHolder,
+      DecoderInputBuffer buffer,
+      boolean formatRequired,
+      boolean loadingFinished) {
+    return (isEnhancement()) ?
+        scalableBaseSampleQueue.maybePeekSampleMetadata(formatHolder, buffer, formatRequired, loadingFinished)
+        : C.RESULT_BUFFER_READ;
+  }
+
+  private synchronized int maybePeekSampleMetadata(
+      FormatHolder formatHolder,
+      DecoderInputBuffer buffer,
+      boolean formatRequired,
+      boolean loadingFinished) {
+    return isIdle() ? C.RESULT_BUFFER_READ :
+        peekSampleMetadata(formatHolder, buffer, formatRequired, loadingFinished);
   }
 
   // Setting deprecated decode-only flag for compatibility with renderers that are still using it.
@@ -757,7 +871,7 @@ public class SampleQueue implements TrackOutput {
         buffer.setFlags(C.BUFFER_FLAG_END_OF_STREAM);
         buffer.timeUs = C.TIME_END_OF_SOURCE;
         return C.RESULT_BUFFER_READ;
-      } else if (upstreamFormat != null && (formatRequired || upstreamFormat != downstreamFormat)) {
+      } else if (shallFormatResult() && upstreamFormat != null && (formatRequired || upstreamFormat != downstreamFormat)) {
         onFormatResult(Assertions.checkNotNull(upstreamFormat), formatHolder);
         return C.RESULT_FORMAT_READ;
       } else {
@@ -765,10 +879,12 @@ public class SampleQueue implements TrackOutput {
       }
     }
 
-    Format format = sharedSampleMetadata.get(getReadIndex()).format;
-    if (formatRequired || format != downstreamFormat) {
-      onFormatResult(format, formatHolder);
-      return C.RESULT_FORMAT_READ;
+    if (shallFormatResult()) {
+      Format format = sharedSampleMetadata.get(getReadIndex()).format;
+      if (formatRequired || format != downstreamFormat) {
+        onFormatResult(format, formatHolder);
+        return C.RESULT_FORMAT_READ;
+      }
     }
 
     int relativeReadIndex = getRelativeIndex(readPosition);
@@ -792,6 +908,13 @@ public class SampleQueue implements TrackOutput {
     return C.RESULT_BUFFER_READ;
   }
 
+  private synchronized void maybeFormatParent() {
+    if (parent != null && parent.partialFormat != null) {
+      parent.format(parent.partialFormat);
+      parent.partialFormat = null;
+    }
+  }
+
   private synchronized boolean setUpstreamFormat(Format format) {
     upstreamFormatRequired = false;
     if (Util.areEqual(format, upstreamFormat)) {
@@ -810,6 +933,9 @@ public class SampleQueue implements TrackOutput {
     } else {
       upstreamFormat = format;
     }
+
+    maybeFormatParent();
+
     allSamplesAreSyncSamples &=
         MimeTypes.allSamplesAreSyncSamples(upstreamFormat.sampleMimeType, upstreamFormat.codecs);
     loggedUnexpectedNonSyncSample = false;
@@ -961,6 +1087,10 @@ public class SampleQueue implements TrackOutput {
     return readPosition != length;
   }
 
+  private boolean shallFormatResult() {
+    return parent != null || !isEnhancement();
+  }
+
   /**
    * Sets the downstream format, performs DRM resource management, and populates the {@code
    * outputFormatHolder}.
@@ -969,6 +1099,12 @@ public class SampleQueue implements TrackOutput {
    * @param outputFormatHolder The output {@link FormatHolder}.
    */
   private void onFormatResult(Format newFormat, FormatHolder outputFormatHolder) {
+    if (parent != null) {
+      Format resultFormat = parent.isIdle() ? newFormat : parent.upstreamFormat;
+      parent.onFormatResult(resultFormat, outputFormatHolder);
+      downstreamFormat = newFormat;
+      return;
+    }
     boolean isFirstFormat = downstreamFormat == null;
     @Nullable
     DrmInitData oldDrmInitData = downstreamFormat == null ? null : downstreamFormat.drmInitData;

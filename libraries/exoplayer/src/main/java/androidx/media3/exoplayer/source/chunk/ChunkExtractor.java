@@ -73,6 +73,9 @@ public interface ChunkExtractor {
      * @return The {@link TrackOutput} for the given track identifier.
      */
     TrackOutput track(int id, @C.TrackType int type);
+    default TrackOutput track(int id, @C.TrackType int type, int scalableBaseId) {
+      return track(id, type);
+    }
   }
 
   /**
