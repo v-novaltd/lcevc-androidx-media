@@ -397,7 +397,8 @@ public final class MediaCodecInfo {
    */
   public DecoderReuseEvaluation canReuseCodec(Format oldFormat, Format newFormat) {
     @DecoderDiscardReasons int discardReasons = 0;
-    if (!Util.areEqual(oldFormat.sampleMimeType, newFormat.sampleMimeType)) {
+    if (!Util.areEqual(MimeTypes.getTopLevelType(oldFormat.sampleMimeType), MimeTypes.getTopLevelType(newFormat.sampleMimeType))
+        || !Util.areEqual(MimeTypes.getBase(oldFormat.sampleMimeType), MimeTypes.getBase(newFormat.sampleMimeType))) {
       discardReasons |= DISCARD_REASON_MIME_TYPE_CHANGED;
     }
 
@@ -409,9 +410,11 @@ public final class MediaCodecInfo {
           && (oldFormat.width != newFormat.width || oldFormat.height != newFormat.height)) {
         discardReasons |= DISCARD_REASON_VIDEO_RESOLUTION_CHANGED;
       }
-      if ((!ColorInfo.isEquivalentToAssumedSdrDefault(oldFormat.colorInfo)
-              || !ColorInfo.isEquivalentToAssumedSdrDefault(newFormat.colorInfo))
-          && !Util.areEqual(oldFormat.colorInfo, newFormat.colorInfo)) {
+      ColorInfo oldColorInfo = oldFormat.colorInfo != null ? oldFormat.colorInfo : new ColorInfo.Builder().build();
+      ColorInfo newColorInfo = newFormat.colorInfo != null ? newFormat.colorInfo : new ColorInfo.Builder().build();
+      if ((!ColorInfo.isEquivalentToAssumedSdrDefault(oldColorInfo)
+              || !ColorInfo.isEquivalentToAssumedSdrDefault(newColorInfo))
+          && !newColorInfo.dataSpaceEquals(oldColorInfo)) {
         // Don't perform detailed checks if both ColorInfos fall within the default SDR assumption.
         discardReasons |= DISCARD_REASON_VIDEO_COLOR_INFO_CHANGED;
       }

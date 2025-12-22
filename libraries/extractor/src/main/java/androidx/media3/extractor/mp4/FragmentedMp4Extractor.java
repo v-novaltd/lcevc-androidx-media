@@ -448,7 +448,7 @@ public class FragmentedMp4Extractor implements Extractor {
     if (sideloadedTrack != null) {
       TrackBundle bundle =
           new TrackBundle(
-              extractorOutput.track(0, sideloadedTrack.type),
+              extractorOutput.track(0, sideloadedTrack.type, sideloadedTrack.scalableBaseId),
               new TrackSampleTable(
                   sideloadedTrack,
                   /* offsets= */ new long[0],
@@ -686,14 +686,54 @@ public class FragmentedMp4Extractor implements Extractor {
 
     int trackCount = sampleTables.size();
     if (trackBundles.size() == 0) {
-      // We need to create the track bundles.
+      // First create all track outputs
+      TrackOutput[] trackOutputs = new TrackOutput[trackCount];
       for (int i = 0; i < trackCount; i++) {
         TrackSampleTable sampleTable = sampleTables.get(i);
         Track track = sampleTable.track;
+        trackOutputs[i] = extractorOutput.track(track.id, track.type, track.scalableBaseId);
+      }
+      // Link scalable base track outputs with their enhancements
+      for (int i = 0; i < trackCount; i++) {
+        Track track = sampleTables.get(i).track;
+        if (track.scalableBaseId != C.ID_UNSET) {
+          for (int j = 0; j < trackCount; j++) {
+            Track maybeBaseTrack = sampleTables.get(j).track;
+            if (maybeBaseTrack.id == track.scalableBaseId) {
+              trackOutputs[i].attachScalableBase(trackOutputs[j]);
+              break;
+            }
+          }
+        }
+      }
+      // Possibly add scalable base formats to track formats
+      for (int i = 0; i < trackCount; i++) {
+        TrackSampleTable sampleTable = sampleTables.get(i);
+        Track track = sampleTable.track;
+        if (track.scalableBaseId != C.ID_UNSET) {
+          for (int j = 0; j < trackCount; j++) {
+            Track maybeBaseTrack = sampleTables.get(j).track;
+            if (maybeBaseTrack.id == track.scalableBaseId) {
+              track = track.copyWithFormat(
+                  track.format.buildUpon()
+                      .setScalableBase(maybeBaseTrack.format)
+                      .build());
+              sampleTables.set(i, new TrackSampleTable(
+                  track,
+                  sampleTable.offsets,
+                  sampleTable.sizes,
+                  sampleTable.maximumSize,
+                  sampleTable.timestampsUs,
+                  sampleTable.flags,
+                  sampleTable.durationUs));
+              break;
+            }
+          }
+        }
         TrackBundle trackBundle =
             new TrackBundle(
-                extractorOutput.track(i, track.type),
-                sampleTable,
+                trackOutputs[i],
+                sampleTables.get(i),
                 getDefaultSampleValues(defaultSampleValuesArray, track.id));
         trackBundles.put(track.id, trackBundle);
         durationUs = max(durationUs, track.durationUs);
@@ -1608,7 +1648,7 @@ public class FragmentedMp4Extractor implements Extractor {
           output.sampleData(nalPrefix, 1);
           processSeiNalUnitPayload =
               ceaTrackOutputs.length > 0
-                  && NalUnitUtil.isNalUnitSei(track.format, nalPrefixData[4]);
+                  && NalUnitUtil.isNalUnitSei(track.format, nalPrefixData[4], nalPrefixData[5]);
           sampleBytesWritten += 5;
           sampleSize += nalUnitLengthFieldLengthDiff;
           if (!isSampleDependedOn
@@ -1798,7 +1838,8 @@ public class FragmentedMp4Extractor implements Extractor {
         || atom == Mp4Box.TYPE_sgpd
         || atom == Mp4Box.TYPE_elst
         || atom == Mp4Box.TYPE_mehd
-        || atom == Mp4Box.TYPE_emsg;
+        || atom == Mp4Box.TYPE_emsg
+        || atom == Mp4Box.TYPE_sbas;
   }
 
   /** Returns whether the extractor should decode a container atom with type {@code atom}. */
@@ -1811,7 +1852,8 @@ public class FragmentedMp4Extractor implements Extractor {
         || atom == Mp4Box.TYPE_moof
         || atom == Mp4Box.TYPE_traf
         || atom == Mp4Box.TYPE_mvex
-        || atom == Mp4Box.TYPE_edts;
+        || atom == Mp4Box.TYPE_edts
+        || atom == Mp4Box.TYPE_tref;
   }
 
   /** Holds data corresponding to a metadata sample. */

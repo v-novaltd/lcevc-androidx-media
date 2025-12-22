@@ -62,6 +62,9 @@ public final class C {
   /** Represents an unset or unknown index or byte position. */
   public static final int INDEX_UNSET = -1;
 
+  /** Represents an unset or unknown id. */
+  public static final int ID_UNSET = -1;
+
   /**
    * @deprecated Use {@link #INDEX_UNSET}.
    */
@@ -927,8 +930,8 @@ public final class C {
    * Represents a type of media track. May be one of {@link #TRACK_TYPE_UNKNOWN}, {@link
    * #TRACK_TYPE_DEFAULT}, {@link #TRACK_TYPE_AUDIO}, {@link #TRACK_TYPE_VIDEO}, {@link
    * #TRACK_TYPE_TEXT}, {@link #TRACK_TYPE_IMAGE}, {@link #TRACK_TYPE_METADATA}, {@link
-   * #TRACK_TYPE_CAMERA_MOTION} or {@link #TRACK_TYPE_NONE}. May also be an app-defined value (see
-   * {@link #TRACK_TYPE_CUSTOM_BASE}).
+   * #TRACK_TYPE_CAMERA_MOTION}, {@link #TRACK_TYPE_VIDEO_SCALABLE_BASE} or {@link #TRACK_TYPE_NONE}.
+   * May also be an app-defined value (see {@link #TRACK_TYPE_CUSTOM_BASE}).
    */
   @Documented
   @Retention(RetentionPolicy.SOURCE)
@@ -944,6 +947,7 @@ public final class C {
         TRACK_TYPE_IMAGE,
         TRACK_TYPE_METADATA,
         TRACK_TYPE_CAMERA_MOTION,
+        TRACK_TYPE_VIDEO_SCALABLE_BASE,
         TRACK_TYPE_NONE,
       })
   public @interface TrackType {}
@@ -974,6 +978,9 @@ public final class C {
 
   /** A type constant for camera motion tracks. */
   public static final int TRACK_TYPE_CAMERA_MOTION = 6;
+
+  /** A type constant for a secondary video track as scalable base. */
+  public static final int TRACK_TYPE_VIDEO_SCALABLE_BASE = 7;
 
   /**
    * Applications or extensions may define custom {@code TRACK_TYPE_*} constants greater than or

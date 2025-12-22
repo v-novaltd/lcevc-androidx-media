@@ -57,6 +57,10 @@ public interface ExtractorOutput {
    */
   TrackOutput track(int id, @C.TrackType int type);
 
+  default TrackOutput track(int id, @C.TrackType int type, int scalableBaseId) {
+    return track(id, type);
+  }
+
   /**
    * Called when all tracks have been identified, meaning no new {@code trackId} values will be
    * passed to {@link #track(int, int)}.

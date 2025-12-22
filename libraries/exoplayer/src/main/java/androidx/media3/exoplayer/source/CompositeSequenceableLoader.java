@@ -123,12 +123,16 @@ public final class CompositeSequenceableLoader implements SequenceableLoader {
         break;
       }
       for (int i = 0; i < loadersWithTrackTypes.size(); i++) {
-        long loaderNextLoadPositionUs = loadersWithTrackTypes.get(i).getNextLoadPositionUs();
+        SequenceableLoader loader = loadersWithTrackTypes.get(i);
+        long loaderNextLoadPositionUs = loader.getNextLoadPositionUs();
         boolean isLoaderBehind =
             loaderNextLoadPositionUs != C.TIME_END_OF_SOURCE
                 && loaderNextLoadPositionUs <= loadingInfo.playbackPositionUs;
-        if (loaderNextLoadPositionUs == nextLoadPositionUs || isLoaderBehind) {
-          madeProgressThisIteration |= loadersWithTrackTypes.get(i).continueLoading(loadingInfo);
+        boolean isEnhancement = loader.isEnhancement();
+        boolean shallContinueLoading = loaderNextLoadPositionUs == nextLoadPositionUs || isLoaderBehind || isEnhancement;
+        if (shallContinueLoading) {
+          boolean continueLoading = loader.continueLoading(loadingInfo);
+          madeProgressThisIteration |= continueLoading;
         }
       }
       madeProgress |= madeProgressThisIteration;
@@ -186,6 +190,11 @@ public final class CompositeSequenceableLoader implements SequenceableLoader {
     @Override
     public void reevaluateBuffer(long positionUs) {
       loader.reevaluateBuffer(positionUs);
+    }
+
+    @Override
+    public boolean isEnhancement() {
+      return loader.isEnhancement();
     }
   }
 }

@@ -84,6 +84,9 @@ public class DefaultLoadControl implements LoadControl {
   /** A default size in bytes for a video buffer. */
   public static final int DEFAULT_VIDEO_BUFFER_SIZE = 2000 * C.DEFAULT_BUFFER_SEGMENT_SIZE;
 
+  /** A default size in bytes for a scalable base video buffer. */
+  public static final int DEFAULT_VIDEO_SCALABLE_BASE_BUFFER_SIZE = 1000 * C.DEFAULT_BUFFER_SEGMENT_SIZE;
+
   /** A default size in bytes for an audio buffer. */
   public static final int DEFAULT_AUDIO_BUFFER_SIZE = 200 * C.DEFAULT_BUFFER_SEGMENT_SIZE;
 
@@ -499,6 +502,8 @@ public class DefaultLoadControl implements LoadControl {
         return DEFAULT_AUDIO_BUFFER_SIZE;
       case C.TRACK_TYPE_VIDEO:
         return DEFAULT_VIDEO_BUFFER_SIZE;
+      case C.TRACK_TYPE_VIDEO_SCALABLE_BASE:
+        return DEFAULT_VIDEO_SCALABLE_BASE_BUFFER_SIZE;
       case C.TRACK_TYPE_TEXT:
         return DEFAULT_TEXT_BUFFER_SIZE;
       case C.TRACK_TYPE_METADATA:

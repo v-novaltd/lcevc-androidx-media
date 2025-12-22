@@ -73,6 +73,7 @@ public class DashManifestParser extends DefaultHandler
 
   private static final Pattern FRAME_RATE_PATTERN = Pattern.compile("(\\d+)(?:/(\\d+))?");
 
+  private static final Pattern SAR_PATTERN = Pattern.compile("([0-9]+):([0-9]+)");
   private static final Pattern CEA_608_ACCESSIBILITY_PATTERN = Pattern.compile("CC([1-4])=.*");
   private static final Pattern CEA_708_ACCESSIBILITY_PATTERN =
       Pattern.compile("([1-9]|[1-5][0-9]|6[0-3])=.*");
@@ -401,6 +402,7 @@ public class DashManifestParser extends DefaultHandler
     String codecs = xpp.getAttributeValue(null, "codecs");
     int width = parseInt(xpp, "width", Format.NO_VALUE);
     int height = parseInt(xpp, "height", Format.NO_VALUE);
+    float sampleAspectRatio = parseSampleAspectRatio(xpp, Format.NO_VALUE);
     float frameRate = parseFrameRate(xpp, Format.NO_VALUE);
     int audioChannels = Format.NO_VALUE;
     int audioSamplingRate = parseInt(xpp, "audioSamplingRate", Format.NO_VALUE);
@@ -457,6 +459,7 @@ public class DashManifestParser extends DefaultHandler
                 codecs,
                 width,
                 height,
+                sampleAspectRatio,
                 frameRate,
                 audioChannels,
                 audioSamplingRate,
@@ -675,6 +678,7 @@ public class DashManifestParser extends DefaultHandler
       @Nullable String adaptationSetCodecs,
       int adaptationSetWidth,
       int adaptationSetHeight,
+      float adaptationSetSampleAspectRatio,
       float adaptationSetFrameRate,
       int adaptationSetAudioChannels,
       int adaptationSetAudioSamplingRate,
@@ -692,12 +696,14 @@ public class DashManifestParser extends DefaultHandler
       boolean dvbProfileDeclared)
       throws XmlPullParserException, IOException {
     String id = xpp.getAttributeValue(null, "id");
+    String dependencyId = xpp.getAttributeValue(null, "dependencyId");
     int bandwidth = parseInt(xpp, "bandwidth", Format.NO_VALUE);
 
     String mimeType = parseString(xpp, "mimeType", adaptationSetMimeType);
     String codecs = parseString(xpp, "codecs", adaptationSetCodecs);
     int width = parseInt(xpp, "width", adaptationSetWidth);
     int height = parseInt(xpp, "height", adaptationSetHeight);
+    float sampleAspectRatio = parseSampleAspectRatio(xpp, adaptationSetSampleAspectRatio);
     float frameRate = parseFrameRate(xpp, adaptationSetFrameRate);
     int audioChannels = adaptationSetAudioChannels;
     int audioSamplingRate = parseInt(xpp, "audioSamplingRate", adaptationSetAudioSamplingRate);
@@ -773,6 +779,7 @@ public class DashManifestParser extends DefaultHandler
             mimeType,
             width,
             height,
+            sampleAspectRatio,
             frameRate,
             audioChannels,
             audioSamplingRate,
@@ -794,7 +801,8 @@ public class DashManifestParser extends DefaultHandler
         inbandEventStreams,
         essentialProperties,
         supplementalProperties,
-        Representation.REVISION_ID_DEFAULT);
+        Representation.REVISION_ID_DEFAULT,
+        dependencyId);
   }
 
   protected Format buildFormat(
@@ -802,6 +810,7 @@ public class DashManifestParser extends DefaultHandler
       @Nullable String containerMimeType,
       int width,
       int height,
+      float sampleAspectRatio,
       float frameRate,
       int audioChannels,
       int audioSamplingRate,
@@ -840,7 +849,7 @@ public class DashManifestParser extends DefaultHandler
             .setTileCountVertical(tileCounts != null ? tileCounts.second : Format.NO_VALUE);
 
     if (MimeTypes.isVideo(sampleMimeType)) {
-      formatBuilder.setWidth(width).setHeight(height).setFrameRate(frameRate);
+      formatBuilder.setWidth(width).setHeight(height).setPixelWidthHeightRatio(sampleAspectRatio).setFrameRate(frameRate);
     } else if (MimeTypes.isAudio(sampleMimeType)) {
       formatBuilder.setChannelCount(audioChannels).setSampleRate(audioSamplingRate);
     } else if (MimeTypes.isText(sampleMimeType)) {
@@ -892,7 +901,8 @@ public class DashManifestParser extends DefaultHandler
         inbandEventStreams,
         representationInfo.essentialProperties,
         representationInfo.supplementalProperties,
-        /* cacheKey= */ null);
+        /* cacheKey= */ null,
+        representationInfo.dependencyId);
   }
 
   // SegmentBase, SegmentList and SegmentTemplate parsing.
@@ -1893,6 +1903,20 @@ public class DashManifestParser extends DefaultHandler
     return MimeTypes.AUDIO_E_AC3;
   }
 
+  protected static float parseSampleAspectRatio(XmlPullParser xpp, float defaultValue) {
+    float sampleAspectRatio = defaultValue;
+    String sampleAspectRatioAttribute = xpp.getAttributeValue(null, "sar");
+    if (sampleAspectRatioAttribute != null) {
+      Matcher sampleAspectRatioMatcher = SAR_PATTERN.matcher(sampleAspectRatioAttribute);
+      if (sampleAspectRatioMatcher.matches()) {
+        int numerator = Integer.parseInt(sampleAspectRatioMatcher.group(1));
+        int denominator = Integer.parseInt(sampleAspectRatioMatcher.group(2));
+        sampleAspectRatio = (float) numerator / denominator;
+      }
+    }
+    return sampleAspectRatio;
+  }
+
   protected static float parseFrameRate(XmlPullParser xpp, float defaultValue) {
     float frameRate = defaultValue;
     String frameRateAttribute = xpp.getAttributeValue(null, "frameRate");
@@ -2090,7 +2114,7 @@ public class DashManifestParser extends DefaultHandler
     public final long revisionId;
     public final List<Descriptor> essentialProperties;
     public final List<Descriptor> supplementalProperties;
-
+    public final String dependencyId;
     public RepresentationInfo(
         Format format,
         List<BaseUrl> baseUrls,
@@ -2100,7 +2124,8 @@ public class DashManifestParser extends DefaultHandler
         ArrayList<Descriptor> inbandEventStreams,
         List<Descriptor> essentialProperties,
         List<Descriptor> supplementalProperties,
-        long revisionId) {
+        long revisionId,
+        @Nullable String dependencyId) {
       this.format = format;
       this.baseUrls = ImmutableList.copyOf(baseUrls);
       this.segmentBase = segmentBase;
@@ -2110,6 +2135,7 @@ public class DashManifestParser extends DefaultHandler
       this.essentialProperties = essentialProperties;
       this.supplementalProperties = supplementalProperties;
       this.revisionId = revisionId;
+      this.dependencyId = dependencyId;
     }
   }
 }

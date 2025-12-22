@@ -127,4 +127,6 @@ public interface SampleStream {
    * @return The number of samples that were skipped.
    */
   int skipData(long positionUs);
+
+  default void attachScalableBase(SampleStream scalableBase) {}
 }

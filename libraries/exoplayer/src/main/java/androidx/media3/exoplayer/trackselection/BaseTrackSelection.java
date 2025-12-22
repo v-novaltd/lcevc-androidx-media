@@ -55,6 +55,14 @@ public abstract class BaseTrackSelection implements ExoTrackSelection {
   // Lazily initialized hashcode.
   private int hashCode;
 
+  /** The scalable base if this selection depends on a scalable base one. */
+  @Nullable
+  protected ExoTrackSelection scalableBase;
+
+  /** The parent that determines the selection is this is a scalable base for another selection. */
+  @Nullable
+  protected ExoTrackSelection parent;
+
   /** The current value of whether playback will proceed when ready. */
   private boolean playWhenReady;
 
@@ -144,9 +152,11 @@ public abstract class BaseTrackSelection implements ExoTrackSelection {
 
   // ExoTrackSelection specific methods.
 
+  @Nullable
   @Override
   public final Format getSelectedFormat() {
-    return formats[getSelectedIndex()];
+    int selectedAdaptiveIndex = getSelectedAdaptiveIndex();
+    return selectedAdaptiveIndex != C.INDEX_UNSET ? formats[selectedAdaptiveIndex] : null;
   }
 
   @Override
@@ -227,5 +237,35 @@ public abstract class BaseTrackSelection implements ExoTrackSelection {
     }
     BaseTrackSelection other = (BaseTrackSelection) obj;
     return group.equals(other.group) && Arrays.equals(tracks, other.tracks);
+  }
+
+  @Override
+  public void setScalableBase(ExoTrackSelection scalableBase) {
+    if (scalableBase == this) {
+      throw new IllegalArgumentException("cannot set scalable base of itself");
+    }
+    this.scalableBase = scalableBase;
+    scalableBase.setParent(this);
+  }
+
+  @Override
+  public void setParent(ExoTrackSelection parent) {
+    this.parent = parent;
+  }
+  @Nullable
+  @Override
+  public ExoTrackSelection getScalableBase() {
+    return scalableBase;
+  }
+
+  public void maybeSwitchToScalableBase(int index) {
+    if (formats[index].scalableBase != null) {
+      formats[index] = formats[index].scalableBase;
+      int newTrackIndex = group.indexOf(formats[index]);
+      if (newTrackIndex == C.INDEX_UNSET) {
+        throw new RuntimeException("switchToScalableBase failed for format " + formats[index]);
+      }
+      tracks[index] = newTrackIndex;
+    }
   }
 }

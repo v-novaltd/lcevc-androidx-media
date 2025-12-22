@@ -110,6 +110,7 @@ public interface TsPayloadReader {
     @Nullable public final String language;
     public final @AudioType int audioType;
     public final List<DvbSubtitleInfo> dvbSubtitleInfos;
+    public final List<Integer> lcevcStreamTags;
     public final byte[] descriptorBytes;
 
     /**
@@ -125,6 +126,7 @@ public interface TsPayloadReader {
         @Nullable String language,
         @AudioType int audioType,
         @Nullable List<DvbSubtitleInfo> dvbSubtitleInfos,
+        @Nullable List<Integer> lcevcStreamTags,
         byte[] descriptorBytes) {
       this.streamType = streamType;
       this.language = language;
@@ -133,6 +135,10 @@ public interface TsPayloadReader {
           dvbSubtitleInfos == null
               ? Collections.emptyList()
               : Collections.unmodifiableList(dvbSubtitleInfos);
+      this.lcevcStreamTags =
+          lcevcStreamTags == null
+              ? Collections.emptyList()
+              : Collections.unmodifiableList(lcevcStreamTags);
       this.descriptorBytes = descriptorBytes;
     }
   }
@@ -267,6 +273,14 @@ public interface TsPayloadReader {
       TimestampAdjuster timestampAdjuster,
       ExtractorOutput extractorOutput,
       TrackIdGenerator idGenerator);
+
+  default void init(
+      TimestampAdjuster timestampAdjuster,
+      ExtractorOutput extractorOutput,
+      TrackIdGenerator idGenerator,
+      int scalableBaseTrackId) {
+    init(timestampAdjuster, extractorOutput, idGenerator);
+  }
 
   /**
    * Notifies the reader that a seek has occurred.

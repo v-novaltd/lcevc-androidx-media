@@ -208,6 +208,7 @@ public class DefaultSsChunkSource implements SsChunkSource {
               Track.TRANSFORMATION_NONE,
               trackEncryptionBoxes,
               nalUnitLengthFieldLength,
+              C.ID_UNSET,
               null,
               null);
       @FragmentedMp4Extractor.Flags

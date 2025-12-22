@@ -65,6 +65,8 @@ public abstract class Representation {
 
   @Nullable private final RangedUri initializationUri;
 
+  public final String dependencyId;
+
   /**
    * Constructs a new instance.
    *
@@ -84,7 +86,8 @@ public abstract class Representation {
         /* inbandEventStreams= */ null,
         /* essentialProperties= */ ImmutableList.of(),
         /* supplementalProperties= */ ImmutableList.of(),
-        /* cacheKey= */ null);
+        /* cacheKey= */ null,
+        /* dependencyId= */null);
   }
 
   /**
@@ -109,7 +112,8 @@ public abstract class Representation {
       @Nullable List<Descriptor> inbandEventStreams,
       List<Descriptor> essentialProperties,
       List<Descriptor> supplementalProperties,
-      @Nullable String cacheKey) {
+      @Nullable String cacheKey,
+      @Nullable String dependencyId) {
     if (segmentBase instanceof SingleSegmentBase) {
       return new SingleSegmentRepresentation(
           revisionId,
@@ -120,7 +124,8 @@ public abstract class Representation {
           essentialProperties,
           supplementalProperties,
           cacheKey,
-          /* contentLength= */ C.LENGTH_UNSET);
+          /* contentLength= */ C.LENGTH_UNSET,
+          dependencyId);
     } else if (segmentBase instanceof MultiSegmentBase) {
       return new MultiSegmentRepresentation(
           revisionId,
@@ -129,10 +134,40 @@ public abstract class Representation {
           (MultiSegmentBase) segmentBase,
           inbandEventStreams,
           essentialProperties,
-          supplementalProperties);
+          supplementalProperties,
+          dependencyId);
     } else {
       throw new IllegalArgumentException(
           "segmentBase must be of type SingleSegmentBase or " + "MultiSegmentBase");
+    }
+  }
+
+  public Representation copyWithFormat(Format format) {
+    if (this instanceof SingleSegmentRepresentation) {
+      return new SingleSegmentRepresentation(
+          revisionId,
+          format,
+          baseUrls,
+          (SingleSegmentBase)((SingleSegmentRepresentation) this).segmentBase,
+          inbandEventStreams,
+          essentialProperties,
+          supplementalProperties,
+          getCacheKey(),
+          ((SingleSegmentRepresentation) this).contentLength,
+          dependencyId);
+    } else if (this instanceof MultiSegmentRepresentation) {
+      return new MultiSegmentRepresentation(
+          revisionId,
+          format,
+          baseUrls,
+          ((MultiSegmentRepresentation) this).segmentBase,
+          inbandEventStreams,
+          essentialProperties,
+          supplementalProperties,
+          dependencyId);
+    }
+    else {
+      throw new IllegalArgumentException("could not copyWithFormat");
     }
   }
 
@@ -143,7 +178,8 @@ public abstract class Representation {
       SegmentBase segmentBase,
       @Nullable List<Descriptor> inbandEventStreams,
       List<Descriptor> essentialProperties,
-      List<Descriptor> supplementalProperties) {
+      List<Descriptor> supplementalProperties,
+      @Nullable String dependencyId) {
     checkArgument(!baseUrls.isEmpty());
     this.revisionId = revisionId;
     this.format = format;
@@ -156,6 +192,7 @@ public abstract class Representation {
     this.supplementalProperties = supplementalProperties;
     initializationUri = segmentBase.getInitialization(this);
     presentationTimeOffsetUs = segmentBase.getPresentationTimeOffsetUs();
+    this.dependencyId = dependencyId;
   }
 
   /**
@@ -184,6 +221,8 @@ public abstract class Representation {
 
   /** A DASH representation consisting of a single segment. */
   public static class SingleSegmentRepresentation extends Representation {
+
+    @VisibleForTesting /* package */ final SingleSegmentBase segmentBase;
 
     /** The uri of the single segment. */
     public final Uri uri;
@@ -232,7 +271,8 @@ public abstract class Representation {
           /* essentialProperties= */ ImmutableList.of(),
           /* supplementalProperties= */ ImmutableList.of(),
           cacheKey,
-          contentLength);
+          contentLength,
+          null);
     }
 
     /**
@@ -255,7 +295,8 @@ public abstract class Representation {
         List<Descriptor> essentialProperties,
         List<Descriptor> supplementalProperties,
         @Nullable String cacheKey,
-        long contentLength) {
+        long contentLength,
+        @Nullable String dependencyId) {
       super(
           revisionId,
           format,
@@ -263,7 +304,8 @@ public abstract class Representation {
           segmentBase,
           inbandEventStreams,
           essentialProperties,
-          supplementalProperties);
+          supplementalProperties,
+          dependencyId);
       this.uri = Uri.parse(baseUrls.get(0).url);
       this.indexUri = segmentBase.getIndex();
       this.cacheKey = cacheKey;
@@ -272,6 +314,7 @@ public abstract class Representation {
       // directly. If we don't, then we can't do better than an index defining a single segment.
       segmentIndex =
           indexUri != null ? null : new SingleSegmentIndex(new RangedUri(null, 0, contentLength));
+      this.segmentBase = segmentBase;
     }
 
     @Override
@@ -317,7 +360,8 @@ public abstract class Representation {
         MultiSegmentBase segmentBase,
         @Nullable List<Descriptor> inbandEventStreams,
         List<Descriptor> essentialProperties,
-        List<Descriptor> supplementalProperties) {
+        List<Descriptor> supplementalProperties,
+        @Nullable String dependencyId) {
       super(
           revisionId,
           format,
@@ -325,7 +369,8 @@ public abstract class Representation {
           segmentBase,
           inbandEventStreams,
           essentialProperties,
-          supplementalProperties);
+          supplementalProperties,
+          dependencyId);
       this.segmentBase = segmentBase;
     }
 

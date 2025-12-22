@@ -80,3 +80,7 @@ libraries/datasource_cronet/libs/*
 
 # MIDI decoder extension
 libraries/decoder_midi/lib
+
+# LCEVC Libraries built
+glad*.cmake
+*external_decoder.so

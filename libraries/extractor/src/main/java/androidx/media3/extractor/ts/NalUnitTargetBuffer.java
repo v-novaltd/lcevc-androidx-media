@@ -48,6 +48,16 @@ public final class NalUnitTargetBuffer {
     nalData[2] = 1;
   }
 
+  public NalUnitTargetBuffer(int nalUnitType, byte[] data, int positionNalUnitDataPostStartCode, int length) {
+    targetType = nalUnitType;
+    isFilling = false;
+    isCompleted = true;
+    nalData = new byte[3 + length];
+    nalData[2] = 1;
+    System.arraycopy(data, positionNalUnitDataPostStartCode, nalData, 3, length);
+    nalLength = nalData.length;
+  }
+
   /** Resets the buffer, clearing any data that it holds. */
   public void reset() {
     isFilling = false;

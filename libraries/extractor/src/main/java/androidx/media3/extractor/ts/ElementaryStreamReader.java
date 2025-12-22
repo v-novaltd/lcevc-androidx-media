@@ -50,6 +50,13 @@ public interface ElementaryStreamReader {
    */
   void createTracks(ExtractorOutput extractorOutput, PesReader.TrackIdGenerator idGenerator);
 
+  default void createTracks(
+      ExtractorOutput extractorOutput,
+      PesReader.TrackIdGenerator idGenerator,
+      int scalableBaseTrackId) {
+    createTracks(extractorOutput, idGenerator);
+  }
+
   /**
    * Called when a packet starts.
    *

@@ -62,9 +62,9 @@ public final class SubtitleTranscodingExtractorOutput implements ExtractorOutput
   // ExtractorOutput implementation
 
   @Override
-  public TrackOutput track(int id, @C.TrackType int type) {
+  public TrackOutput track(int id, @C.TrackType int type, int scalableBaseId) {
     if (type != C.TRACK_TYPE_TEXT) {
-      return delegate.track(id, type);
+      return delegate.track(id, type, scalableBaseId);
     }
     SubtitleTranscodingTrackOutput existingTrackOutput = textTrackOutputs.get(id);
     if (existingTrackOutput != null) {
@@ -74,6 +74,11 @@ public final class SubtitleTranscodingExtractorOutput implements ExtractorOutput
         new SubtitleTranscodingTrackOutput(delegate.track(id, type), subtitleParserFactory);
     textTrackOutputs.put(id, trackOutput);
     return trackOutput;
+  }
+
+  @Override
+  public TrackOutput track(int id, @C.TrackType int type) {
+    return track(id, type, C.ID_UNSET);
   }
 
   @Override

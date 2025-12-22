@@ -24,6 +24,7 @@ import static java.lang.Math.min;
 
 import android.net.Uri;
 import android.os.Handler;
+import android.util.Pair;
 import android.util.SparseIntArray;
 import androidx.annotation.Nullable;
 import androidx.media3.common.C;
@@ -156,8 +157,7 @@ import org.checkerframework.checker.nullness.qual.RequiresNonNull;
 
   @Nullable private Chunk loadingChunk;
   private HlsSampleQueue[] sampleQueues;
-  private int[] sampleQueueTrackIds;
-  private Set<Integer> sampleQueueMappingDoneByType;
+  private Pair<Integer, Integer>[] sampleQueueTrackIds;
   private SparseIntArray sampleQueueIndicesByType;
   private @MonotonicNonNull TrackOutput emsgUnwrappingTrackOutput;
   private int primarySampleQueueType;
@@ -241,8 +241,7 @@ import org.checkerframework.checker.nullness.qual.RequiresNonNull;
     this.metadataType = metadataType;
     loader = new Loader("Loader:HlsSampleStreamWrapper");
     nextChunkHolder = new HlsChunkSource.HlsChunkHolder();
-    sampleQueueTrackIds = new int[0];
-    sampleQueueMappingDoneByType = new HashSet<>(MAPPABLE_TYPES.size());
+    sampleQueueTrackIds = new Pair[0];
     sampleQueueIndicesByType = new SparseIntArray(MAPPABLE_TYPES.size());
     sampleQueues = new HlsSampleQueue[0];
     sampleQueueIsAudioVideoFlags = new boolean[0];
@@ -481,7 +480,8 @@ import org.checkerframework.checker.nullness.qual.RequiresNonNull;
     }
     int sampleQueueCount = sampleQueues.length;
     for (int i = 0; i < sampleQueueCount; i++) {
-      sampleQueues[i].discardTo(positionUs, toKeyframe, sampleQueuesEnabledStates[i]);
+      boolean stopAtReadPosition = sampleQueuesEnabledStates[i] || sampleQueues[i].isEnhancement();
+      sampleQueues[i].discardTo(positionUs, toKeyframe, stopAtReadPosition);
     }
   }
 
@@ -1078,13 +1078,18 @@ import org.checkerframework.checker.nullness.qual.RequiresNonNull;
 
   @Override
   public TrackOutput track(int id, int type) {
+    return track(id, type, C.ID_UNSET);
+  }
+
+  @Override
+  public TrackOutput track(int id, int type, int scalableBaseId) {
     @Nullable TrackOutput trackOutput = null;
-    if (MAPPABLE_TYPES.contains(type)) {
+    if (MAPPABLE_TYPES.contains(type) && scalableBaseId == C.ID_UNSET) {
       // Track types in MAPPABLE_TYPES are handled manually to ignore IDs.
       trackOutput = getMappedTrackOutput(id, type);
     } else /* non-mappable type track */ {
       for (int i = 0; i < sampleQueues.length; i++) {
-        if (sampleQueueTrackIds[i] == id) {
+        if (sampleQueueTrackIds[i].first == id) {
           trackOutput = sampleQueues[i];
           break;
         }
@@ -1096,9 +1101,11 @@ import org.checkerframework.checker.nullness.qual.RequiresNonNull;
         return createDiscardingTrackOutput(id, type);
       } else {
         // The relevant SampleQueue hasn't been constructed yet - so construct it.
-        trackOutput = createSampleQueue(id, type);
+        trackOutput = createSampleQueue(id, type, scalableBaseId);
       }
     }
+
+    maybeAttachScalableBase();
 
     if (type == C.TRACK_TYPE_METADATA) {
       if (emsgUnwrappingTrackOutput == null) {
@@ -1132,15 +1139,25 @@ import org.checkerframework.checker.nullness.qual.RequiresNonNull;
       return null;
     }
 
-    if (sampleQueueMappingDoneByType.add(type)) {
-      sampleQueueTrackIds[sampleQueueIndex] = id;
-    }
-    return sampleQueueTrackIds[sampleQueueIndex] == id
+    return sampleQueueTrackIds[sampleQueueIndex].first == id
         ? sampleQueues[sampleQueueIndex]
         : createDiscardingTrackOutput(id, type);
   }
 
-  private SampleQueue createSampleQueue(int id, int type) {
+  private void maybeAttachScalableBase() {
+    for (int i = 0; i < sampleQueues.length; i++) {
+      if (sampleQueueTrackIds[i].second != C.ID_UNSET) {
+        // first: id, second: scalableBaseId
+        for (int j = 0; j < sampleQueues.length; j++) {
+          if (sampleQueueTrackIds[j].first == sampleQueueTrackIds[i].second) {
+            sampleQueues[i].attachScalableBase(sampleQueues[j]);
+          }
+        }
+      }
+    }
+  }
+
+  private SampleQueue createSampleQueue(int id, int type, int scalableBaseId) {
     int trackCount = sampleQueues.length;
 
     boolean isAudioVideo = type == C.TRACK_TYPE_AUDIO || type == C.TRACK_TYPE_VIDEO;
@@ -1156,14 +1173,15 @@ import org.checkerframework.checker.nullness.qual.RequiresNonNull;
     }
     sampleQueue.setUpstreamFormatChangeListener(this);
     sampleQueueTrackIds = Arrays.copyOf(sampleQueueTrackIds, trackCount + 1);
-    sampleQueueTrackIds[trackCount] = id;
+    sampleQueueTrackIds[trackCount] = new Pair(id, scalableBaseId);
     sampleQueues = Util.nullSafeArrayAppend(sampleQueues, sampleQueue);
     sampleQueueIsAudioVideoFlags = Arrays.copyOf(sampleQueueIsAudioVideoFlags, trackCount + 1);
     sampleQueueIsAudioVideoFlags[trackCount] = isAudioVideo;
     haveAudioVideoSampleQueues |= sampleQueueIsAudioVideoFlags[trackCount];
-    sampleQueueMappingDoneByType.add(type);
-    sampleQueueIndicesByType.append(type, trackCount);
-    if (getTrackTypeScore(type) > getTrackTypeScore(primarySampleQueueType)) {
+    if (scalableBaseId == C.ID_UNSET) {
+      sampleQueueIndicesByType.append(type, trackCount);
+    }
+    if (getTrackTypeScore(type) > getTrackTypeScore(primarySampleQueueType) || scalableBaseId != C.ID_UNSET) {
       primarySampleQueueIndex = trackCount;
       primarySampleQueueType = type;
     }
@@ -1193,7 +1211,6 @@ import org.checkerframework.checker.nullness.qual.RequiresNonNull;
 
   /** Called when an {@link HlsMediaChunk} starts extracting media with a new {@link Extractor}. */
   public void onNewExtractor() {
-    sampleQueueMappingDoneByType.clear();
   }
 
   /**
@@ -1345,7 +1362,10 @@ import org.checkerframework.checker.nullness.qual.RequiresNonNull;
         Format upstreamFormat = Assertions.checkStateNotNull(sampleQueue.getUpstreamFormat());
         if (formatsMatch(upstreamFormat, trackGroups.get(i).getFormat(0))) {
           trackGroupToSampleQueueIndex[i] = queueIndex;
-          break;
+          // Look for enhancement sampleQueue with priority
+          if (sampleQueue.isEnhancement()) {
+            break;
+          }
         }
       }
     }

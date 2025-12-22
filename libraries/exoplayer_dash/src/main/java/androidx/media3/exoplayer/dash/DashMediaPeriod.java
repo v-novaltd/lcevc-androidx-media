@@ -479,7 +479,10 @@ import java.util.regex.Pattern;
     // second pass is needed because the primary stream may not have been created yet in a first
     // pass if the index of the primary stream is greater than the index of the embedded stream.
     for (int i = 0; i < selections.length; i++) {
-      if (streams[i] == null && selections[i] != null) {
+      if (selections[i] == null) {
+        continue;
+      }
+      if (streams[i] == null) {
         int trackGroupIndex = streamIndexToTrackGroupIndex[i];
         TrackGroupInfo trackGroupInfo = trackGroupInfos[trackGroupIndex];
         if (trackGroupInfo.trackGroupCategory == TrackGroupInfo.CATEGORY_EMBEDDED) {
@@ -493,6 +496,22 @@ import java.util.regex.Pattern;
                 ((ChunkSampleStream) streams[primaryStreamIndex])
                     .selectEmbeddedTrack(positionUs, trackGroupInfo.trackType);
           }
+        }
+      } else {
+        ExoTrackSelection scalableBase = selections[i].getScalableBase();
+        if (scalableBase != null) {
+          // selections[i] has a scalable base, therefore it is an enhancement
+          // look for the scalable base stream and attach it to stream[i]
+          int j = 0;
+          for (; j < selections.length; j++) {
+            if (selections[j] == scalableBase) {
+              break;
+            }
+          }
+          if (j == selections.length) {
+            throw new IllegalArgumentException("could not find scalable base track selection for renderer at index " + i);
+          }
+          streams[i].attachScalableBase(streams[j]);
         }
       }
     }
@@ -696,6 +715,7 @@ import java.util.regex.Pattern;
         representations.addAll(adaptationSets.get(adaptationSetIndex).representations);
       }
       Format[] formats = new Format[representations.size()];
+      HashMap<String, Format> formatIdsMap = new HashMap<>();
       for (int j = 0; j < formats.length; j++) {
         Format originalFormat = representations.get(j).format;
         Format.Builder updatedFormat =
@@ -703,6 +723,22 @@ import java.util.regex.Pattern;
                 .buildUpon()
                 .setCryptoType(drmSessionManager.getCryptoType(originalFormat));
         formats[j] = updatedFormat.build();
+        if (formats[j].id != null) {
+          formatIdsMap.put(formats[j].id, formats[j]);
+        }
+      }
+
+      // Link formats with their scalable bases
+      for (int j = 0; j < representations.size(); j++) {
+        Representation maybeEnhancementRepresentation = representations.get(j);
+        if (maybeEnhancementRepresentation.dependencyId != null) {
+          Format baseFormat = formatIdsMap.get(maybeEnhancementRepresentation.dependencyId);
+          if (baseFormat == null) {
+            throw new IllegalArgumentException("could not find dependencyId linked format with id = " + maybeEnhancementRepresentation.dependencyId);
+          }
+          Format.Builder linkedFormat = formats[j].buildUpon().setScalableBase(baseFormat);
+          formats[j] = linkedFormat.build();
+        }
       }
 
       AdaptationSet firstAdaptationSet = adaptationSets.get(adaptationSetIndices[0]);

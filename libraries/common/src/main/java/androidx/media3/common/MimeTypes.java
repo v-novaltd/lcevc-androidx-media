@@ -15,6 +15,8 @@
  */
 package androidx.media3.common;
 
+import static androidx.media3.common.util.Assertions.checkArgument;
+
 import android.text.TextUtils;
 import androidx.annotation.Nullable;
 import androidx.annotation.VisibleForTesting;
@@ -45,6 +47,8 @@ public final class MimeTypes {
   public static final String VIDEO_H263 = BASE_TYPE_VIDEO + "/3gpp";
   public static final String VIDEO_H264 = BASE_TYPE_VIDEO + "/avc";
   public static final String VIDEO_H265 = BASE_TYPE_VIDEO + "/hevc";
+  public static final String VIDEO_H266 = BASE_TYPE_VIDEO + "/vvc";
+  public static final String VIDEO_LCEVC = BASE_TYPE_VIDEO + "/lcevc";
   @UnstableApi public static final String VIDEO_VP8 = BASE_TYPE_VIDEO + "/x-vnd.on2.vp8";
   @UnstableApi public static final String VIDEO_VP9 = BASE_TYPE_VIDEO + "/x-vnd.on2.vp9";
   public static final String VIDEO_AV1 = BASE_TYPE_VIDEO + "/av01";
@@ -436,6 +440,10 @@ public final class MimeTypes {
       return MimeTypes.VIDEO_H264;
     } else if (codec.startsWith("hev1") || codec.startsWith("hvc1")) {
       return MimeTypes.VIDEO_H265;
+    } else if (codec.startsWith("vvi1") || codec.startsWith("vvc1")) {
+      return MimeTypes.VIDEO_H266;
+    } else if (codec.startsWith("lvc1") || codec.startsWith("lvc2") || codec.startsWith("lvc3") || codec.startsWith("lvc4")) {
+      return MimeTypes.VIDEO_LCEVC;
     } else if (codec.startsWith("dvav")
         || codec.startsWith("dva1")
         || codec.startsWith("dvhe")
@@ -722,12 +730,42 @@ public final class MimeTypes {
   }
 
   /**
+   * From two {@code mimeType}s of the same type creates a new one with concatenated subtypes,
+   * using '-' as separator, E.g. video/one and video/two will return video/one-two.
+   *
+   * @param firstMimeType A first MIME type.
+   * @param secondMimeType A second MIME type.
+   * @return A MIME type, with same type of the inputs and '-' concatenated subtypes.
+   */
+  public static String concatenateSubtype(String firstMimeType, String secondMimeType) {
+    checkArgument(firstMimeType != null);
+    checkArgument(secondMimeType != null);
+    checkArgument(!firstMimeType.equalsIgnoreCase(secondMimeType));
+    String firstMimeTypeType = firstMimeType.substring(0, firstMimeType.indexOf('/'));
+    String secondMimeTypeType = secondMimeType.substring(0, secondMimeType.indexOf('/'));
+    checkArgument(firstMimeTypeType.equalsIgnoreCase(secondMimeTypeType));
+    String secondMimeTypeSubtype = secondMimeType.substring(secondMimeType.indexOf('/') + 1);
+    return firstMimeType + "-" + secondMimeTypeSubtype;
+  }
+
+  public static String getBase(String mimeType) {
+    checkArgument(mimeType != null);
+    int indexOfSlash = mimeType.indexOf('/');
+    checkArgument(indexOfSlash > 0);
+    int indexOfDash = mimeType.indexOf('-');
+    if (indexOfDash > indexOfSlash) {
+      return mimeType.substring(0, indexOfSlash + 1) + mimeType.substring(indexOfDash + 1);
+    }
+    return mimeType;
+  }
+
+  /**
    * Returns the top-level type of {@code mimeType}, or null if {@code mimeType} is null or does not
    * contain a forward slash character ({@code '/'}).
    */
   @UnstableApi
   @Nullable
-  private static String getTopLevelType(@Nullable String mimeType) {
+  public static String getTopLevelType(@Nullable String mimeType) {
     if (mimeType == null) {
       return null;
     }

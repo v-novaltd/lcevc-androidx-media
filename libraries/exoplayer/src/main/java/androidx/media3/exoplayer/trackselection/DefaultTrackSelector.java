@@ -2604,11 +2604,39 @@ public class DefaultTrackSelector extends MappingTrackSelector
         definitions[i] = null;
       }
     }
+    // Update scalable base video definition
+    if (!parameters.overrides.isEmpty()) {
+      for (int i = 0; i < rendererCount; i++) {
+        @C.TrackType int rendererType = mappedTrackInfo.getRendererType(i);
+        if (rendererType == C.TRACK_TYPE_VIDEO && definitions[i] != null) {
+          Pair<ExoTrackSelection.Definition, Integer> selectedVideo = Pair.create(definitions[i], i);
+          Pair<ExoTrackSelection.Definition, Integer> selectedScalableBaseVideo = selectScalableBaseVideoTrack(mappedTrackInfo, selectedVideo);
+          definitions[selectedScalableBaseVideo.second] = selectedScalableBaseVideo.first;
+          break;
+        }
+      }
+    }
 
     @NullableType
     ExoTrackSelection[] rendererTrackSelections =
         trackSelectionFactory.createTrackSelections(
             definitions, getBandwidthMeter(), mediaPeriodId, timeline);
+
+    // Link video track selection with its scalable base if exists
+    ExoTrackSelection videoTrackSelection = null;
+    ExoTrackSelection scalableBaseVideoTrackSelection = null;
+    for (int i = 0; i < rendererCount; i++) {
+      @C.TrackType int rendererType = mappedTrackInfo.getRendererType(i);
+      if (rendererType == C.TRACK_TYPE_VIDEO) {
+        videoTrackSelection = rendererTrackSelections[i];
+      }
+      else if (rendererType == C.TRACK_TYPE_VIDEO_SCALABLE_BASE) {
+        scalableBaseVideoTrackSelection = rendererTrackSelections[i];
+      }
+    }
+    if (videoTrackSelection != null && scalableBaseVideoTrackSelection != null) {
+      videoTrackSelection.setScalableBase(scalableBaseVideoTrackSelection);
+    }
 
     // Initialize the renderer configurations to the default configuration for all renderers with
     // selections, and null otherwise.
@@ -2697,6 +2725,11 @@ public class DefaultTrackSelector extends MappingTrackSelector
       definitions[selectedImage.second] = selectedImage.first;
     } else if (selectedVideo != null) {
       definitions[selectedVideo.second] = selectedVideo.first;
+      // Create definitions for scalable base video
+      Pair<ExoTrackSelection.Definition, Integer> selectedScalableBaseVideo = selectScalableBaseVideoTrack(mappedTrackInfo, selectedVideo);
+      if (selectedScalableBaseVideo != null) {
+        definitions[selectedScalableBaseVideo.second] = selectedScalableBaseVideo.first;
+      }
     }
 
     @Nullable
@@ -2725,6 +2758,7 @@ public class DefaultTrackSelector extends MappingTrackSelector
     for (int i = 0; i < rendererCount; i++) {
       int trackType = mappedTrackInfo.getRendererType(i);
       if (trackType != C.TRACK_TYPE_VIDEO
+          && trackType != C.TRACK_TYPE_VIDEO_SCALABLE_BASE
           && trackType != C.TRACK_TYPE_AUDIO
           && trackType != C.TRACK_TYPE_TEXT
           && trackType != C.TRACK_TYPE_IMAGE) {
@@ -2770,6 +2804,60 @@ public class DefaultTrackSelector extends MappingTrackSelector
             VideoTrackInfo.createForTrackGroup(
                 rendererIndex, group, params, support, mixedMimeTypeSupports[rendererIndex]),
         VideoTrackInfo::compareSelections);
+  }
+
+  @Nullable
+  protected Pair<ExoTrackSelection.Definition, Integer> selectScalableBaseVideoTrack(
+      MappedTrackInfo mappedTrackInfo,
+      Pair<ExoTrackSelection.Definition, Integer> selectedVideo) {
+    ExoTrackSelection.Definition selectedVideoDefinition = selectedVideo.first;
+    TrackGroup videoTrackGroup = selectedVideoDefinition.group;
+    ArrayList<Format> scalableBasevideoFormats = new ArrayList<>();
+    for (int i = 0; i < selectedVideoDefinition.tracks.length; i++) {
+      int formatIndex = selectedVideoDefinition.tracks[i];
+      Format format = videoTrackGroup.getFormat(formatIndex);
+      if (format.scalableBase != null) {
+        scalableBasevideoFormats.add(format.scalableBase);
+      }
+    }
+    // Find video and scalable base video renderer indices
+    int rendererCount = mappedTrackInfo.getRendererCount();
+    int videoRendererIndex = -1;
+    int scalableBaseVideoRendererIndex = -1;
+    for (int rendererIndex = 0; rendererIndex < rendererCount; rendererIndex++) {
+      if (mappedTrackInfo.getRendererType(rendererIndex) == C.TRACK_TYPE_VIDEO) {
+        videoRendererIndex = rendererIndex;
+      } else if (mappedTrackInfo.getRendererType(rendererIndex) == C.TRACK_TYPE_VIDEO_SCALABLE_BASE) {
+        scalableBaseVideoRendererIndex = rendererIndex;
+        break;
+      }
+    }
+    Assertions.checkArgument(videoRendererIndex >= 0);
+    Assertions.checkArgument(scalableBaseVideoRendererIndex >= 0);
+    int[] scalableBaseVideoTrackIndices = new int[scalableBasevideoFormats.size()];
+    // Find the track group with all the scalable base formats
+    TrackGroup scalableBaseVideoTrackGroup = null;
+    TrackGroupArray videoTrackGroupArray = mappedTrackInfo.getTrackGroups(videoRendererIndex);
+    for (int i = 0; i < videoTrackGroupArray.length; i++) {
+      TrackGroup trackGroup = videoTrackGroupArray.get(i);
+      int j = 0;
+      for (; j < scalableBasevideoFormats.size(); j++) {
+        int index = trackGroup.indexOf(scalableBasevideoFormats.get(j));
+        if (index == C.INDEX_UNSET) {
+          break;
+        }
+        scalableBaseVideoTrackIndices[j] = index;
+      }
+      if (j == scalableBasevideoFormats.size()) {
+        scalableBaseVideoTrackGroup = trackGroup;
+        break;
+      }
+    }
+    Assertions.checkArgument(scalableBaseVideoTrackGroup != null);
+    return Pair.create(
+        scalableBaseVideoTrackIndices.length > 0 ?
+            new ExoTrackSelection.Definition(scalableBaseVideoTrackGroup, scalableBaseVideoTrackIndices) : null,
+        scalableBaseVideoRendererIndex);
   }
 
   // Audio track selection implementation.
@@ -3619,8 +3707,12 @@ public class DefaultTrackSelector extends MappingTrackSelector
 
     @Override
     public boolean isCompatibleForAdaptationWith(VideoTrackInfo otherTrack) {
+      // Override sample mime type from scalable base if set
+      String otherSampleMimeType = otherTrack.format.scalableBase != null ?
+          otherTrack.format.scalableBase.sampleMimeType
+          : otherTrack.format.sampleMimeType;
       return (allowMixedMimeTypes
-              || Util.areEqual(format.sampleMimeType, otherTrack.format.sampleMimeType))
+              || Util.areEqual(format.sampleMimeType, otherSampleMimeType))
           && (parameters.allowVideoMixedDecoderSupportAdaptiveness
               || (this.usesPrimaryDecoder == otherTrack.usesPrimaryDecoder
                   && this.usesHardwareAcceleration == otherTrack.usesHardwareAcceleration));

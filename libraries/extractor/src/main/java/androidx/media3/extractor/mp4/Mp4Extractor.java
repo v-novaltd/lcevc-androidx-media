@@ -707,8 +707,9 @@ public final class Mp4Extractor implements Extractor, SeekMap {
               auxiliaryTrackTypesForEditableVideoTracks.size(),
               trackSampleTables.size()));
     }
-    int trackIndex = 0;
-    for (int i = 0; i < trackSampleTables.size(); i++) {
+    int trackCount = trackSampleTables.size();
+    TrackOutput[] trackOutputs = new TrackOutput[trackCount];
+    for (int i = 0; i < trackCount; i++) {
       TrackSampleTable trackSampleTable = trackSampleTables.get(i);
       if (trackSampleTable.sampleCount == 0) {
         continue;
@@ -717,8 +718,19 @@ public final class Mp4Extractor implements Extractor, SeekMap {
       long trackDurationUs =
           track.durationUs != C.TIME_UNSET ? track.durationUs : trackSampleTable.durationUs;
       durationUs = max(durationUs, trackDurationUs);
+      trackOutputs[i] = extractorOutput.track(track.id, track.type, track.scalableBaseId);
+      // If track is an enhancement, find and link its scalable base
+      if (track.scalableBaseId != C.ID_UNSET) {
+        for (int j = 0; j < trackCount; j++) {
+          Track maybeBaseTrack = tracks.get(j).track;
+          if (maybeBaseTrack.id == track.scalableBaseId) {
+            trackOutputs[i].attachScalableBase(trackOutputs[j]);
+            break;
+          }
+        }
+      }
       Mp4Track mp4Track =
-          new Mp4Track(track, trackSampleTable, extractorOutput.track(trackIndex++, track.type));
+          new Mp4Track(track, trackSampleTable, trackOutputs[i]);
 
       int maxInputSize;
       if (MimeTypes.AUDIO_TRUEHD.equals(track.format.sampleMimeType)) {
@@ -1209,7 +1221,8 @@ public final class Mp4Extractor implements Extractor, SeekMap {
         || atom == Mp4Box.TYPE_ftyp
         || atom == Mp4Box.TYPE_udta
         || atom == Mp4Box.TYPE_keys
-        || atom == Mp4Box.TYPE_ilst;
+        || atom == Mp4Box.TYPE_ilst
+        || atom == Mp4Box.TYPE_sbas;
   }
 
   /** Returns whether the extractor should decode a container atom with type {@code atom}. */
@@ -1221,7 +1234,8 @@ public final class Mp4Extractor implements Extractor, SeekMap {
         || atom == Mp4Box.TYPE_stbl
         || atom == Mp4Box.TYPE_edts
         || atom == Mp4Box.TYPE_meta
-        || atom == Mp4Box.TYPE_edvd;
+        || atom == Mp4Box.TYPE_edvd
+        || atom == Mp4Box.TYPE_tref;
   }
 
   private static final class Mp4Track {

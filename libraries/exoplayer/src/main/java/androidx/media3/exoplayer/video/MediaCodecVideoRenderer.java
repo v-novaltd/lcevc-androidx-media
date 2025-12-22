@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2016 The Android Open Source Project
+ * Modified 2023-2025 V-Nova Limited
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -1285,14 +1286,18 @@ public class MediaCodecVideoRenderer extends MediaCodecRenderer
 
   @Override
   protected int getCodecBufferFlags(DecoderInputBuffer buffer) {
+    int flags = 0;
     if (Util.SDK_INT >= 34 && tunneling && isBufferBeforeStartTime(buffer)) {
       // The buffer likely needs to be dropped because its timestamp is less than the start time.
       // We can't decide to do this after decoding because we won't get the buffer back from the
       // codec in tunneling mode. This may not work perfectly, e.g. when the codec is doing frame
       // rate conversion, but it's still better than not dropping the buffers at all.
-      return MediaCodec.BUFFER_FLAG_DECODE_ONLY;
+      flags |= MediaCodec.BUFFER_FLAG_DECODE_ONLY;
     }
-    return 0;
+    if (buffer.isKeyFrame()) {
+      flags |= MediaCodec.BUFFER_FLAG_KEY_FRAME;
+    }
+    return flags;
   }
 
   @Override
@@ -1362,7 +1367,14 @@ public class MediaCodecVideoRenderer extends MediaCodecRenderer
               ? mediaFormat.getInteger(KEY_CROP_BOTTOM) - mediaFormat.getInteger(KEY_CROP_TOP) + 1
               : mediaFormat.getInteger(MediaFormat.KEY_HEIGHT);
     }
-    pixelWidthHeightRatio = format.pixelWidthHeightRatio;
+
+    boolean hasPixelAspectRatio = mediaFormat != null && mediaFormat.containsKey(MediaFormat.KEY_PIXEL_ASPECT_RATIO_WIDTH)
+        && mediaFormat.containsKey(MediaFormat.KEY_PIXEL_ASPECT_RATIO_HEIGHT);
+    pixelWidthHeightRatio = hasPixelAspectRatio ?
+        mediaFormat.getInteger(MediaFormat.KEY_PIXEL_ASPECT_RATIO_WIDTH) /
+            mediaFormat.getInteger(MediaFormat.KEY_PIXEL_ASPECT_RATIO_HEIGHT)
+        : format.pixelWidthHeightRatio;
+
     // The decoder applies the rotation when rendering to the surface. For 90 and 270 degree
     // rotations, we need to flip the width, height and pixel aspect ratio to reflect the rotation
     // that was applied.
@@ -1404,18 +1416,36 @@ public class MediaCodecVideoRenderer extends MediaCodecRenderer
   @TargetApi(29) // codecHandlesHdr10PlusOutOfBandMetadata is false if Util.SDK_INT < 29
   protected void handleInputBufferSupplementalData(DecoderInputBuffer buffer)
       throws ExoPlaybackException {
-    if (!codecHandlesHdr10PlusOutOfBandMetadata) {
+    ByteBuffer data = buffer.supplementalData;
+
+    if (data == null || data.remaining() < 7) {
       return;
     }
-    ByteBuffer data = checkNotNull(buffer.supplementalData);
-    if (data.remaining() >= 7) {
-      // Check for HDR10+ out-of-band metadata. See User_data_registered_itu_t_t35 in ST 2094-40.
-      byte ituTT35CountryCode = data.get();
-      int ituTT35TerminalProviderCode = data.getShort();
-      int ituTT35TerminalProviderOrientedCode = data.getShort();
-      byte applicationIdentifier = data.get();
-      byte applicationVersion = data.get();
+
+    // Read the first 7 bytes to determine the payload type
+    byte byte0 = data.get();
+    int short1 = data.getShort();
+    int short3 = data.getShort();
+    byte byte5 = data.get();
+    byte byte6 = data.get();
+    data.position(0);
+
+    if (byte0 == (byte)0x00 && short1 == 0x0001 && (short3 == 0x7BFF || short3 == 0x79FF)) {
+      // ISO/IEC 23094-2 payload
+      byte[] lcevcData = new byte[data.remaining()];
+      data.get(lcevcData);
       data.position(0);
+      setLcevcData(checkNotNull(getCodec()), buffer.timeUs, buffer.isKeyFrame(), lcevcData);
+    } else {
+      if (!codecHandlesHdr10PlusOutOfBandMetadata) {
+        return;
+      }
+      // Check for HDR10+ out-of-band metadata. See User_data_registered_itu_t_t35 in ST 2094-40.
+      byte ituTT35CountryCode = byte0;
+      int ituTT35TerminalProviderCode = short1;
+      int ituTT35TerminalProviderOrientedCode = short3;
+      byte applicationIdentifier = byte5;
+      byte applicationVersion = byte6;
       if (ituTT35CountryCode == (byte) 0xB5
           && ituTT35TerminalProviderCode == 0x003C
           && ituTT35TerminalProviderOrientedCode == 0x0001
@@ -1949,6 +1979,15 @@ public class MediaCodecVideoRenderer extends MediaCodecRenderer
     codec.setParameters(codecParameters);
   }
 
+  @RequiresApi(29)
+  private static void setLcevcData(MediaCodecAdapter codec, long timeUs, boolean isKeyFrame, byte[] lcevcData) {
+    Bundle codecParameters = new Bundle();
+    codecParameters.putLong("lcevc-frame-pts", timeUs);
+    codecParameters.putBoolean("lcevc-frame-iskey", isKeyFrame);
+    codecParameters.putByteArray("lcevc-frame-data", lcevcData);
+    codec.setParameters(codecParameters);
+  }
+
   private void setOutputSurface(MediaCodecAdapter codec, @Nullable Surface surface) {
     if (Util.SDK_INT >= 23 && surface != null) {
       setOutputSurfaceV23(codec, surface);
@@ -2073,6 +2112,10 @@ public class MediaCodecVideoRenderer extends MediaCodecRenderer
         // streamFormat likely has incomplete color information. Copy the complete color information
         // from format to avoid codec re-use being ruled out for only this reason.
         streamFormat = streamFormat.buildUpon().setColorInfo(format.colorInfo).build();
+      }
+      if (streamFormat.scalableBase != null
+          && MimeTypes.getBase(streamFormat.sampleMimeType) != MimeTypes.getBase(streamFormat.scalableBase.sampleMimeType)) {
+        streamFormat = streamFormat.withScalableBaseFormatInfo(streamFormat.scalableBase);
       }
       if (codecInfo.canReuseCodec(format, streamFormat).result != REUSE_RESULT_NO) {
         haveUnknownDimensions |=

@@ -16,6 +16,7 @@
 package androidx.media3.extractor.mp4;
 
 import static androidx.media3.common.MimeTypes.getMimeTypeFromMp4ObjectType;
+import static androidx.media3.common.util.Assertions.checkArgument;
 import static androidx.media3.common.util.Assertions.checkNotNull;
 import static androidx.media3.common.util.Util.castNonNull;
 import static java.lang.Math.max;
@@ -49,6 +50,8 @@ import androidx.media3.extractor.DolbyVisionConfig;
 import androidx.media3.extractor.ExtractorUtil;
 import androidx.media3.extractor.GaplessInfoHolder;
 import androidx.media3.extractor.HevcConfig;
+import androidx.media3.extractor.VvcConfig;
+import androidx.media3.extractor.LcevcConfig;
 import androidx.media3.extractor.OpusUtil;
 import androidx.media3.extractor.VorbisUtil;
 import com.google.common.base.Function;
@@ -168,6 +171,7 @@ public final class BoxParser {
       TrackSampleTable trackSampleTable = parseStbl(track, stblAtom, gaplessInfoHolder);
       trackSampleTables.add(trackSampleTable);
     }
+    maybeAggregateEnhancementMetadata(trackSampleTables);
     return trackSampleTables;
   }
 
@@ -335,7 +339,21 @@ public final class BoxParser {
       return null;
     }
 
+    int scalableBaseId = C.ID_UNSET;
+    @Nullable Mp4Box.ContainerBox tref = trak.getContainerBoxOfType(Mp4Box.TYPE_tref);
+    if (tref != null) {
+      @Nullable LeafBox sbas = tref.getLeafBoxOfType(Mp4Box.TYPE_sbas);
+      if (sbas != null) {
+        sbas.data.skipBytes(Mp4Box.HEADER_SIZE);
+        scalableBaseId = sbas.data.readInt();
+      }
+    }
+
     TkhdData tkhdData = parseTkhd(checkNotNull(trak.getLeafBoxOfType(Mp4Box.TYPE_tkhd)).data);
+    if (tkhdData.id == scalableBaseId) {
+      // Scalable base id cannot be the same track id, so reset it
+      scalableBaseId = C.ID_UNSET;
+    }
     if (duration == C.TIME_UNSET) {
       duration = tkhdData.duration;
     }
@@ -390,8 +408,45 @@ public final class BoxParser {
             stsdData.requiredSampleTransformation,
             stsdData.trackEncryptionBoxes,
             stsdData.nalUnitLengthFieldLength,
+            scalableBaseId,
             editListDurations,
             editListMediaTimes);
+  }
+
+  private static void maybeAggregateEnhancementMetadata(List<TrackSampleTable> trackSampleTables) {
+    @Nullable TrackSampleTable enhancementSampleTable = null;
+    @Nullable TrackSampleTable baseSampleTable = null;
+    // Look for enhancement
+    for (TrackSampleTable trackSampleTable : trackSampleTables) {
+      if (trackSampleTable.track.scalableBaseId != C.ID_UNSET) {
+        enhancementSampleTable = trackSampleTable;
+        break;
+      }
+    }
+    if (enhancementSampleTable == null) {
+      return;
+    }
+    // Look for base
+    for (TrackSampleTable trackSampleTable : trackSampleTables) {
+      if (trackSampleTable.track.id == enhancementSampleTable.track.scalableBaseId) {
+        baseSampleTable = trackSampleTable;
+        break;
+      }
+    }
+    checkArgument(baseSampleTable != null, "Signalled scalable base track with id = "
+        + enhancementSampleTable.track.scalableBaseId + " not found");
+    Log.i(TAG, "Track id = " + enhancementSampleTable.track.id + " is enhancement of track id = " + baseSampleTable.track.id);
+    TrackSampleTable aggregateBaseSampleTable = new TrackSampleTable(
+        baseSampleTable.track,
+        baseSampleTable.offsets,
+        baseSampleTable.sizes,
+        baseSampleTable.maximumSize + enhancementSampleTable.maximumSize,
+        baseSampleTable.timestampsUs,
+        baseSampleTable.flags,
+        baseSampleTable.durationUs);
+    Log.d(TAG, "Input buffers: base maximumSize = " + baseSampleTable.maximumSize + ", enhancement maximumSize = " + enhancementSampleTable.maximumSize);
+    int baseSampleTableIndex = trackSampleTables.indexOf(baseSampleTable);
+    trackSampleTables.set(baseSampleTableIndex, aggregateBaseSampleTable);
   }
 
   /**
@@ -1024,6 +1079,9 @@ public final class BoxParser {
           || childAtomType == Mp4Box.TYPE_mp4v
           || childAtomType == Mp4Box.TYPE_hvc1
           || childAtomType == Mp4Box.TYPE_hev1
+          || childAtomType == Mp4Box.TYPE_vvc1
+          || childAtomType == Mp4Box.TYPE_vvi1
+          || childAtomType == Mp4Box.TYPE_lvc1
           || childAtomType == Mp4Box.TYPE_s263
           || childAtomType == Mp4Box.TYPE_H263
           || childAtomType == Mp4Box.TYPE_h263
@@ -1230,7 +1288,7 @@ public final class BoxParser {
         ExtractorUtil.checkContainerInput(mimeType == null, /* message= */ null);
         mimeType = MimeTypes.VIDEO_H264;
         parent.setPosition(childStartPosition + Mp4Box.HEADER_SIZE);
-        AvcConfig avcConfig = AvcConfig.parse(parent);
+        AvcConfig avcConfig = AvcConfig.parse(parent, atomType);
         initializationData = avcConfig.initializationData;
         out.nalUnitLengthFieldLength = avcConfig.nalUnitLengthFieldLength;
         if (!pixelWidthHeightRatioFromPasp) {
@@ -1247,7 +1305,7 @@ public final class BoxParser {
         ExtractorUtil.checkContainerInput(mimeType == null, /* message= */ null);
         mimeType = MimeTypes.VIDEO_H265;
         parent.setPosition(childStartPosition + Mp4Box.HEADER_SIZE);
-        HevcConfig hevcConfig = HevcConfig.parse(parent);
+        HevcConfig hevcConfig = HevcConfig.parse(parent, atomType);
         initializationData = hevcConfig.initializationData;
         out.nalUnitLengthFieldLength = hevcConfig.nalUnitLengthFieldLength;
         if (!pixelWidthHeightRatioFromPasp) {
@@ -1265,6 +1323,30 @@ public final class BoxParser {
         bitdepthLuma = hevcConfig.bitdepthLuma;
         bitdepthChroma = hevcConfig.bitdepthChroma;
         vpsData = hevcConfig.vpsData;
+      } else if (childAtomType == Mp4Box.TYPE_vvcC) {
+        ExtractorUtil.checkContainerInput(mimeType == null, /* message= */ null);
+        mimeType = MimeTypes.VIDEO_H266;
+        parent.setPosition(childStartPosition + Mp4Box.HEADER_SIZE);
+        if (childAtomSize > Mp4Box.HEADER_SIZE) {
+          VvcConfig vvcConfig = VvcConfig.parse(parent, atomType);
+          initializationData = vvcConfig.initializationData;
+          out.nalUnitLengthFieldLength = vvcConfig.nalUnitLengthFieldLength;
+          if (!pixelWidthHeightRatioFromPasp) {
+            pixelWidthHeightRatio = vvcConfig.pixelWidthAspectRatio;
+          }
+          codecs = vvcConfig.codecs;
+          bitdepthLuma = vvcConfig.bitdepthLuma;
+          bitdepthChroma = vvcConfig.bitdepthChroma;
+        }
+      } else if (childAtomType == Mp4Box.TYPE_lvcC) {
+        ExtractorUtil.checkContainerInput(mimeType == null, /* message= */ null);
+        mimeType = MimeTypes.VIDEO_LCEVC;
+        parent.setPosition(childStartPosition + Mp4Box.HEADER_SIZE);
+        LcevcConfig lcevcConfig = LcevcConfig.parse(parent);
+        out.nalUnitLengthFieldLength = lcevcConfig.nalUnitLengthFieldLength;
+        codecs = lcevcConfig.codecs;
+        bitdepthLuma = lcevcConfig.bitdepthLuma;
+        bitdepthChroma = lcevcConfig.bitdepthChroma;
       } else if (childAtomType == Mp4Box.TYPE_lhvC) {
         // The lhvC atom must follow the hvcC atom; so the media type must be already set.
         ExtractorUtil.checkContainerInput(
@@ -1459,7 +1541,7 @@ public final class BoxParser {
         // established by the bitstream. The absence of color descriptors ('colorSpace' and
         // 'colorTransfer') does not necessarily mean that 'colorRange' has default values, hence it
         // is not being verified here.
-        // If 'Atom.TYPE_avcC', 'Atom.TYPE_hvcC', 'Atom.TYPE_vpcC' or 'Atom.TYPE_av1c' is available,
+        // If 'Mp4Box.TYPE_avcC', 'Mp4Box.TYPE_hvcC', 'Mp4Box.TYPE_vpcC' or 'Mp4Box.TYPE_av1c' is available,
         // they will take precedence and overwrite any existing values.
         if (colorSpace == Format.NO_VALUE && colorTransfer == Format.NO_VALUE) {
           int colorType = parent.readInt();

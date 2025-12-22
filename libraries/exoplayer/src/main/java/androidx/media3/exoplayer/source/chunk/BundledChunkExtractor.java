@@ -45,6 +45,7 @@ import androidx.media3.extractor.text.SubtitleExtractor;
 import androidx.media3.extractor.text.SubtitleParser;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
@@ -264,6 +265,11 @@ public final class BundledChunkExtractor implements ExtractorOutput, ChunkExtrac
 
   @Override
   public TrackOutput track(int id, int type) {
+    return track(id, type, C.ID_UNSET);
+  }
+
+  @Override
+  public TrackOutput track(int id, int type, int scalableBaseId) {
     BindingTrackOutput bindingTrackOutput = bindingTrackOutputs.get(id);
     if (bindingTrackOutput == null) {
       // Assert that if we're seeing a new track we have not seen endTracks.
@@ -271,7 +277,7 @@ public final class BundledChunkExtractor implements ExtractorOutput, ChunkExtrac
       // TODO: Manifest formats for embedded tracks should also be passed here.
       bindingTrackOutput =
           new BindingTrackOutput(
-              id, type, type == primaryTrackType ? primaryTrackManifestFormat : null);
+              id, type, scalableBaseId, type == primaryTrackType ? primaryTrackManifestFormat : null);
       bindingTrackOutput.bind(trackOutputProvider, endTimeUs);
       bindingTrackOutputs.put(id, bindingTrackOutput);
     }
@@ -298,6 +304,7 @@ public final class BundledChunkExtractor implements ExtractorOutput, ChunkExtrac
 
     private final int id;
     private final int type;
+    private final int scalableBaseId;
     @Nullable private final Format manifestFormat;
     private final DiscardingTrackOutput fakeTrackOutput;
 
@@ -305,9 +312,10 @@ public final class BundledChunkExtractor implements ExtractorOutput, ChunkExtrac
     private @MonotonicNonNull TrackOutput trackOutput;
     private long endTimeUs;
 
-    public BindingTrackOutput(int id, int type, @Nullable Format manifestFormat) {
+    public BindingTrackOutput(int id, int type, int scalableBaseId, @Nullable Format manifestFormat) {
       this.id = id;
       this.type = type;
+      this.scalableBaseId = scalableBaseId;
       this.manifestFormat = manifestFormat;
       fakeTrackOutput = new DiscardingTrackOutput();
     }
@@ -318,7 +326,7 @@ public final class BundledChunkExtractor implements ExtractorOutput, ChunkExtrac
         return;
       }
       this.endTimeUs = endTimeUs;
-      trackOutput = trackOutputProvider.track(id, type);
+      trackOutput = trackOutputProvider.track(id, type, scalableBaseId);
       if (sampleFormat != null) {
         trackOutput.format(sampleFormat);
       }
@@ -354,6 +362,16 @@ public final class BundledChunkExtractor implements ExtractorOutput, ChunkExtrac
         trackOutput = fakeTrackOutput;
       }
       castNonNull(trackOutput).sampleMetadata(timeUs, flags, size, offset, cryptoData);
+    }
+
+    @Override
+    public void attachScalableBase(TrackOutput scalableBase) {
+      castNonNull(trackOutput).attachScalableBase(((BindingTrackOutput)(castNonNull(scalableBase))).trackOutput);
+    }
+
+    @Override
+    public boolean isEnhancement() {
+      return castNonNull(trackOutput).isEnhancement();
     }
   }
 }

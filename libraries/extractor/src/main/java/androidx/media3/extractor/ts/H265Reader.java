@@ -144,6 +144,12 @@ public final class H265Reader implements ElementaryStreamReader {
         }
 
         int bytesWrittenPastPosition = limit - nalUnitOffset;
+        // If the byte preceding the nal unit is 0 it means this is a case of 4 byte start code,
+        // as per ISO/IEC 23008-2 section B.2.1 next_bits(32)==0x00000001, to avoid a 1 byte shift
+        // in the output sample placement bytesWrittenPastPosition must advance by 1
+        if (nalUnitOffset > 0 && dataArray[nalUnitOffset - 1] == 0x00) {
+          bytesWrittenPastPosition++;
+        }
         long absolutePosition = totalBytesWritten - bytesWrittenPastPosition;
         // Indicate the end of the previous NAL unit. If the length to the start of the next unit
         // is negative then we wrote too many bytes to the NAL buffers. Discard the excess bytes
@@ -408,7 +414,9 @@ public final class H265Reader implements ElementaryStreamReader {
     /** Returns whether a NAL unit type is one that occurs in the VLC body of a sample. */
     private static boolean isVclBodyNalUnit(int nalUnitType) {
       return nalUnitType < NalUnitUtil.H265_NAL_UNIT_TYPE_VPS
-          || nalUnitType == NalUnitUtil.H265_NAL_UNIT_TYPE_SUFFIX_SEI;
+          || nalUnitType == NalUnitUtil.H265_NAL_UNIT_TYPE_SUFFIX_SEI
+          || nalUnitType == NalUnitUtil.LCEVC_NAL_UNIT_TYPE_NON_IDR
+          || nalUnitType == NalUnitUtil.LCEVC_NAL_UNIT_TYPE_IDR;
     }
   }
 }

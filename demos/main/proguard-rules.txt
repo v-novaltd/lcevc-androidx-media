@@ -1,2 +1,11 @@
 # Proguard rules specific to the main demo app.
+# Modified 2023-2025 V-Nova Limited
 
+# TODO : reduce scope here to only constructor and callback methods
+-keep class com.vnova.lcevc.decoder.* {
+    *;
+}
+
+-keep class androidx.media3.exoplayer.video.* {
+    *;
+}

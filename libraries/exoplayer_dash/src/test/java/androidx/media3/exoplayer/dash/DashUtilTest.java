@@ -82,7 +82,8 @@ public final class DashUtilTest {
             /* essentialProperties= */ ImmutableList.of(),
             /* supplementalProperties= */ ImmutableList.of(),
             /* cacheKey= */ null,
-            /* contentLength= */ 1);
+            /* contentLength= */ 1,
+            /* dependencyId= */ null);
     RangedUri rangedUri = new RangedUri("path/to/resource", /* start= */ 0, /* length= */ 1);
 
     String cacheKey = DashUtil.resolveCacheKey(representation, rangedUri);
@@ -104,7 +105,8 @@ public final class DashUtilTest {
             /* essentialProperties= */ ImmutableList.of(),
             /* supplementalProperties= */ ImmutableList.of(),
             "cacheKey",
-            /* contentLength= */ 1);
+            /* contentLength= */ 1,
+            /* dependencyId= */ null);
     RangedUri rangedUri = new RangedUri("path/to/resource", /* start= */ 0, /* length= */ 1);
 
     String cacheKey = DashUtil.resolveCacheKey(representation, rangedUri);

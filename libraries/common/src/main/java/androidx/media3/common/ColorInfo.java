@@ -433,6 +433,16 @@ public final class ColorInfo {
         && chromaBitdepth == other.chromaBitdepth;
   }
 
+  public boolean dataSpaceEquals(@Nullable Object obj) {
+    if (obj == null || getClass() != obj.getClass()) {
+      return false;
+    }
+    ColorInfo other = (ColorInfo) obj;
+    return colorSpace == other.colorSpace
+        && colorRange == other.colorRange
+        && colorTransfer == other.colorTransfer;
+  }
+
   @Override
   public int hashCode() {
     if (hashCode == 0) {

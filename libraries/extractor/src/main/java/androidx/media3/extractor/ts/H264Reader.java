@@ -151,6 +151,12 @@ public final class H264Reader implements ElementaryStreamReader {
         nalUnitData(dataArray, offset, nalUnitOffset);
       }
       int bytesWrittenPastPosition = limit - nalUnitOffset;
+      // If the byte preceding the nal unit is 0 it means this is a case of 4 byte start code,
+      // as per ISO/IEC 14496-10 section B.1.1 next_bits(32)==0x00000001, to avoid a 1 byte shift
+      // in the output sample placement bytesWrittenPastPosition must advance by 1
+      if (nalUnitOffset > 0 && dataArray[nalUnitOffset - 1] == 0x00) {
+        bytesWrittenPastPosition++;
+      }
       long absolutePosition = totalBytesWritten - bytesWrittenPastPosition;
       // Indicate the end of the previous NAL unit. If the length to the start of the next unit
       // is negative then we wrote too many bytes to the NAL buffers. Discard the excess bytes

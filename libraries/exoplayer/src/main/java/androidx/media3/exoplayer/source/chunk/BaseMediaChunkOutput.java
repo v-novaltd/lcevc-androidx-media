@@ -33,6 +33,7 @@ public final class BaseMediaChunkOutput implements TrackOutputProvider {
   private static final String TAG = "BaseMediaChunkOutput";
 
   private final @C.TrackType int[] trackTypes;
+  private final int[] trackIds;
   private final SampleQueue[] sampleQueues;
 
   /**
@@ -41,14 +42,36 @@ public final class BaseMediaChunkOutput implements TrackOutputProvider {
    */
   public BaseMediaChunkOutput(int[] trackTypes, SampleQueue[] sampleQueues) {
     this.trackTypes = trackTypes;
+    this.trackIds = new int[trackTypes.length];
+    for (int i = 0; i < trackTypes.length; i++) {
+      this.trackIds[i] = Integer.MIN_VALUE;
+    }
     this.sampleQueues = sampleQueues;
   }
 
   @Override
   public TrackOutput track(int id, @C.TrackType int type) {
+    return track(id, type, C.ID_UNSET);
+  }
+
+  @Override
+  public TrackOutput track(int id, @C.TrackType int type, int scalableBaseId) {
     for (int i = 0; i < trackTypes.length; i++) {
       if (type == trackTypes[i]) {
-        return sampleQueues[i];
+        if (trackIds[i] == Integer.MIN_VALUE) {
+          trackIds[i] = id;
+          return sampleQueues[i];
+        } else if (scalableBaseId == C.ID_UNSET && trackIds[i] == id) {
+          return sampleQueues[i];
+        }
+        else if (scalableBaseId != C.ID_UNSET && sampleQueues[i].isEnhancement()) {
+          // ChunkSampleStream operates on sampleQueues[0] so the enhanced sampleQueue
+          // must be moved to the index 0 in order for it to be the primary one
+          moveToFront(trackTypes, i);
+          moveToFront(trackIds, i);
+          moveToFront(sampleQueues, i);
+          return sampleQueues[0];
+        }
       }
     }
     Log.e(TAG, "Unmatched track of type: " + type);
@@ -72,5 +95,23 @@ public final class BaseMediaChunkOutput implements TrackOutputProvider {
     for (SampleQueue sampleQueue : sampleQueues) {
       sampleQueue.setSampleOffsetUs(sampleOffsetUs);
     }
+  }
+
+  public static <T> void moveToFront(T[] array, int index) {
+    if (array.length == 0) return;
+    if (index <= 0 || index >= array.length) return;
+
+    T element = array[index];
+    System.arraycopy(array, 0, array, 1, index);
+    array[0] = element;
+  }
+
+  public static void moveToFront(int[] array, int index) {
+    if (array.length == 0) return;
+    if (index <= 0 || index >= array.length) return;
+
+    int element = array[index];
+    System.arraycopy(array, 0, array, 1, index);
+    array[0] = element;
   }
 }

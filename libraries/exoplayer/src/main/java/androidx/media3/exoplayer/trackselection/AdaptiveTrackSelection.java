@@ -30,6 +30,7 @@ import androidx.media3.common.util.NullableType;
 import androidx.media3.common.util.UnstableApi;
 import androidx.media3.common.util.Util;
 import androidx.media3.exoplayer.source.MediaSource.MediaPeriodId;
+import androidx.media3.exoplayer.source.chunk.Chunk;
 import androidx.media3.exoplayer.source.chunk.MediaChunk;
 import androidx.media3.exoplayer.source.chunk.MediaChunkIterator;
 import androidx.media3.exoplayer.upstream.BandwidthMeter;
@@ -313,9 +314,8 @@ public class AdaptiveTrackSelection extends BaseTrackSelection {
   private final float bufferedFractionToLiveEdgeForQualityIncrease;
   private final ImmutableList<AdaptationCheckpoint> adaptationCheckpoints;
   private final Clock clock;
-
   private float playbackSpeed;
-  private int selectedIndex;
+  private int selectedAdaptiveIndex;
   private @C.SelectionReason int reason;
   private long lastBufferEvaluationMs;
   @Nullable private MediaChunk lastBufferEvaluationMediaChunk;
@@ -446,11 +446,12 @@ public class AdaptiveTrackSelection extends BaseTrackSelection {
     // Make initial selection
     if (reason == C.SELECTION_REASON_UNKNOWN) {
       reason = C.SELECTION_REASON_INITIAL;
-      selectedIndex = determineIdealSelectedIndex(nowMs, chunkDurationUs);
+      selectedAdaptiveIndex = determineIdealAdaptiveIndex(nowMs, chunkDurationUs);
       return;
     }
 
-    int previousSelectedIndex = selectedIndex;
+    int previousSelectedAdaptiveIndex = selectedAdaptiveIndex;
+    int previousSelectedIndex = getIndexFromAdaptiveIndex(selectedAdaptiveIndex);
     @C.SelectionReason int previousReason = reason;
     int formatIndexOfPreviousChunk =
         queue.isEmpty() ? C.INDEX_UNSET : indexOf(Iterables.getLast(queue).trackFormat);
@@ -458,8 +459,12 @@ public class AdaptiveTrackSelection extends BaseTrackSelection {
       previousSelectedIndex = formatIndexOfPreviousChunk;
       previousReason = Iterables.getLast(queue).trackSelectionReason;
     }
-    int newSelectedIndex = determineIdealSelectedIndex(nowMs, chunkDurationUs);
-    if (newSelectedIndex != previousSelectedIndex
+    int newSelectedAdaptiveIndex = determineIdealAdaptiveIndex(nowMs, chunkDurationUs);
+    int newSelectedIndex = getIndexFromAdaptiveIndex(newSelectedAdaptiveIndex);
+    if (parent == null
+        && newSelectedIndex != C.INDEX_UNSET
+        && previousSelectedIndex != C.INDEX_UNSET
+        && newSelectedIndex != previousSelectedIndex
         && !isTrackExcluded(previousSelectedIndex, nowMs)) {
       // Revert back to the previous selection if conditions are not suitable for switching.
       Format currentFormat = getFormat(previousSelectedIndex);
@@ -470,23 +475,30 @@ public class AdaptiveTrackSelection extends BaseTrackSelection {
           && bufferedDurationUs < minDurationForQualityIncreaseUs) {
         // The selected track is a higher quality, but we have insufficient buffer to safely switch
         // up. Defer switching up for now.
+        newSelectedAdaptiveIndex = previousSelectedAdaptiveIndex;
         newSelectedIndex = previousSelectedIndex;
       } else if (selectedFormat.bitrate < currentFormat.bitrate
           && bufferedDurationUs >= maxDurationForQualityDecreaseUs) {
         // The selected track is a lower quality, but we have sufficient buffer to defer switching
         // down for now.
+        newSelectedAdaptiveIndex = previousSelectedAdaptiveIndex;
         newSelectedIndex = previousSelectedIndex;
       }
     }
     // If we adapted, update the trigger.
     reason =
         newSelectedIndex == previousSelectedIndex ? previousReason : C.SELECTION_REASON_ADAPTIVE;
-    selectedIndex = newSelectedIndex;
+    selectedAdaptiveIndex = newSelectedAdaptiveIndex;
   }
 
   @Override
   public int getSelectedIndex() {
-    return selectedIndex;
+    return getIndexFromAdaptiveIndex(selectedAdaptiveIndex);
+  }
+
+  @Override
+  public int getSelectedAdaptiveIndex() {
+    return selectedAdaptiveIndex;
   }
 
   @Override
@@ -521,25 +533,27 @@ public class AdaptiveTrackSelection extends BaseTrackSelection {
     if (playoutBufferedDurationBeforeLastChunkUs < minDurationToRetainAfterDiscardUs) {
       return queueSize;
     }
-    int idealSelectedIndex = determineIdealSelectedIndex(nowMs, getLastChunkDurationUs(queue));
-    Format idealFormat = getFormat(idealSelectedIndex);
-    // If chunks contain video, discard from the first chunk after minDurationToRetainAfterDiscardUs
-    // whose resolution and bitrate are both lower than the ideal track, and whose width and height
-    // are less than or equal to maxWidthToDiscard and maxHeightToDiscard respectively.
-    for (int i = 0; i < queueSize; i++) {
-      MediaChunk chunk = queue.get(i);
-      Format format = chunk.trackFormat;
-      long mediaDurationBeforeThisChunkUs = chunk.startTimeUs - playbackPositionUs;
-      long playoutDurationBeforeThisChunkUs =
-          Util.getPlayoutDurationForMediaDuration(mediaDurationBeforeThisChunkUs, playbackSpeed);
-      if (playoutDurationBeforeThisChunkUs >= minDurationToRetainAfterDiscardUs
-          && format.bitrate < idealFormat.bitrate
-          && format.height != Format.NO_VALUE
-          && format.height <= maxHeightToDiscard
-          && format.width != Format.NO_VALUE
-          && format.width <= maxWidthToDiscard
-          && format.height < idealFormat.height) {
-        return i;
+    determineIdealAdaptiveIndex(nowMs, getLastChunkDurationUs(queue));
+    if (selectedAdaptiveIndex != C.INDEX_UNSET) {
+      Format idealFormat = getFormat(selectedAdaptiveIndex);
+      // If chunks contain video, discard from the first chunk after minDurationToRetainAfterDiscardUs
+      // whose resolution and bitrate are both lower than the ideal track, and whose width and height
+      // are less than or equal to maxWidthToDiscard and maxHeightToDiscard respectively.
+      for (int i = 0; i < queueSize; i++) {
+        MediaChunk chunk = queue.get(i);
+        Format format = chunk.trackFormat;
+        long mediaDurationBeforeThisChunkUs = chunk.startTimeUs - playbackPositionUs;
+        long playoutDurationBeforeThisChunkUs =
+            Util.getPlayoutDurationForMediaDuration(mediaDurationBeforeThisChunkUs, playbackSpeed);
+        if (playoutDurationBeforeThisChunkUs >= minDurationToRetainAfterDiscardUs
+            && format.bitrate < idealFormat.bitrate
+            && format.height != Format.NO_VALUE
+            && format.height <= maxHeightToDiscard
+            && format.width != Format.NO_VALUE
+            && format.width <= maxWidthToDiscard
+            && format.height < idealFormat.height) {
+          return i;
+        }
       }
     }
     return queueSize;
@@ -550,17 +564,22 @@ public class AdaptiveTrackSelection extends BaseTrackSelection {
     return latestBitrateEstimate;
   }
 
+  @Override
+  public boolean shouldCancelChunkLoad(
+      long playbackPositionUs, Chunk loadingChunk, List<? extends MediaChunk> queue) {
+    return selectedAdaptiveIndex == C.INDEX_UNSET;
+  }
+
   /**
    * Called when updating the selected track to determine whether a candidate track can be selected.
    *
-   * @param format The {@link Format} of the candidate track.
    * @param trackBitrate The estimated bitrate of the track. May differ from {@link Format#bitrate}
    *     if a more accurate estimate of the current track bitrate is available.
    * @param effectiveBitrate The bitrate available to this selection.
    * @return Whether this {@link Format} can be selected.
    */
   @SuppressWarnings("unused")
-  protected boolean canSelectFormat(Format format, int trackBitrate, long effectiveBitrate) {
+  protected boolean canSelectFormat(int trackBitrate, long effectiveBitrate) {
     return trackBitrate <= effectiveBitrate;
   }
 
@@ -596,20 +615,40 @@ public class AdaptiveTrackSelection extends BaseTrackSelection {
    * @param chunkDurationUs The duration of a media chunk in microseconds, or {@link C#TIME_UNSET}
    *     if unknown.
    */
-  private int determineIdealSelectedIndex(long nowMs, long chunkDurationUs) {
+  private int determineIdealAdaptiveIndex(long nowMs, long chunkDurationUs) {
+    if (parent != null) {
+      // Selected adaptive index is from the parent one
+      Format parentFormat = parent.getSelectedFormat();
+      return indexOf(parentFormat.scalableBase != null ? parentFormat.scalableBase : parentFormat);
+    }
+
     long effectiveBitrate = getAllocatedBandwidth(chunkDurationUs);
     int lowestBitrateAllowedIndex = 0;
     for (int i = 0; i < length; i++) {
       if (nowMs == Long.MIN_VALUE || !isTrackExcluded(i, nowMs)) {
+        lowestBitrateAllowedIndex = i;
         Format format = getFormat(i);
-        if (canSelectFormat(format, format.bitrate, effectiveBitrate)) {
-          return i;
-        } else {
-          lowestBitrateAllowedIndex = i;
+        if (canSelectFormat(format.bitrate, effectiveBitrate)) {
+          break;
         }
       }
     }
     return lowestBitrateAllowedIndex;
+  }
+
+  private int getIndexFromAdaptiveIndex(int adaptiveIndex) {
+    if (adaptiveIndex == C.INDEX_UNSET) {
+      return C.INDEX_UNSET;
+    }
+    Format format = getFormat(adaptiveIndex);
+    if (scalableBase != null) {
+      // Track is enhancement only, or disabled since base will be in separate scalable base track
+      return (format.scalableBase != null) ? adaptiveIndex : C.INDEX_UNSET;
+    }
+    else {
+      // Either no enhancement case or scalable base track
+      return (format.scalableBase != null) ? indexOf(format.scalableBase) : adaptiveIndex;
+    }
   }
 
   private long minDurationForQualityIncreaseUs(long availableDurationUs, long chunkDurationUs) {
@@ -636,6 +675,10 @@ public class AdaptiveTrackSelection extends BaseTrackSelection {
    */
   private long getNextChunkDurationUs(
       MediaChunkIterator[] mediaChunkIterators, List<? extends MediaChunk> queue) {
+    int selectedIndex = getIndexFromAdaptiveIndex(selectedAdaptiveIndex);
+    if (selectedIndex == C.INDEX_UNSET) {
+      return C.TIME_UNSET;
+    }
     // Try to get the next chunk duration for the currently selected format.
     if (selectedIndex < mediaChunkIterators.length && mediaChunkIterators[selectedIndex].next()) {
       MediaChunkIterator iterator = mediaChunkIterators[selectedIndex];

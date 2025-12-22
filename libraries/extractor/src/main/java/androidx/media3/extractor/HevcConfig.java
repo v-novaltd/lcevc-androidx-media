@@ -38,8 +38,8 @@ public final class HevcConfig {
    * @return A parsed representation of the HEVC configuration data.
    * @throws ParserException If an error occurred parsing the data.
    */
-  public static HevcConfig parse(ParsableByteArray data) throws ParserException {
-    return parseImpl(data, /* layered= */ false, /* vpsData= */ null);
+  public static HevcConfig parse(ParsableByteArray data, int atomType) throws ParserException {
+    return parseImpl(data, atomType, /* layered= */ false, /* vpsData= */ null);
   }
 
   /**
@@ -67,7 +67,7 @@ public final class HevcConfig {
    * @throws ParserException If an error occurred parsing the data.
    */
   private static HevcConfig parseImpl(
-      ParsableByteArray data, boolean layered, @Nullable NalUnitUtil.H265VpsData vpsData)
+      ParsableByteArray data, int atomType, boolean layered, @Nullable NalUnitUtil.H265VpsData vpsData)
       throws ParserException {
     try {
       // Skip to the NAL unit length size field.
@@ -144,6 +144,7 @@ public final class HevcConfig {
             if (spsData.profileTierLevel != null) {
               codecs =
                   CodecSpecificDataUtil.buildHevcCodecString(
+                      atomType,
                       spsData.profileTierLevel.generalProfileSpace,
                       spsData.profileTierLevel.generalTierFlag,
                       spsData.profileTierLevel.generalProfileIdc,
@@ -188,6 +189,16 @@ public final class HevcConfig {
       throw ParserException.createForMalformedContainer(
           "Error parsing" + (layered ? "L-HEVC config" : "HEVC config"), e);
     }
+  }
+
+  private static HevcConfig parseImpl(
+      ParsableByteArray data, boolean layered, @Nullable NalUnitUtil.H265VpsData vpsData)
+      throws ParserException {
+    return parseImpl(data, 0x68766331 /* hvc1 */, layered, vpsData);
+  }
+
+  public static HevcConfig parse(ParsableByteArray data) throws ParserException {
+    return parseImpl(data, /* layered= */ false, /* vpsData= */ null);
   }
 
   /**

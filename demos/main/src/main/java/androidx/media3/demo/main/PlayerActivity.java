@@ -53,6 +53,7 @@ import androidx.media3.exoplayer.offline.DownloadRequest;
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
 import androidx.media3.exoplayer.source.MediaSource;
 import androidx.media3.exoplayer.source.ads.AdsLoader;
+import androidx.media3.exoplayer.trackselection.DefaultTrackSelector;
 import androidx.media3.exoplayer.util.DebugTextViewHelper;
 import androidx.media3.exoplayer.util.EventLogger;
 import androidx.media3.ui.PlayerView;
@@ -100,7 +101,7 @@ public class PlayerActivity extends AppCompatActivity
 
   // Activity lifecycle.
 
-  @Override
+  @UnstableApi @Override
   public void onCreate(@Nullable Bundle savedInstanceState) {
     super.onCreate(savedInstanceState);
     dataSourceFactory = DemoUtil.getDataSourceFactory(/* context= */ this);
@@ -125,7 +126,8 @@ public class PlayerActivity extends AppCompatActivity
       startPosition = savedInstanceState.getLong(KEY_POSITION);
       restoreServerSideAdsLoaderState(savedInstanceState);
     } else {
-      trackSelectionParameters = new TrackSelectionParameters.Builder(/* context= */ this).build();
+      boolean isTunnelingEnabled = BuildConfig.SET_TUNNELING;
+      trackSelectionParameters = new DefaultTrackSelector.Parameters.Builder(this).setTunnelingEnabled(isTunnelingEnabled).build();
       clearStartPosition();
     }
   }

@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2016 The Android Open Source Project
+ * Modified 2023-2025 V-Nova Limited
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,6 +25,7 @@ import androidx.media3.common.Format;
 import androidx.media3.common.Player;
 import androidx.media3.common.VideoSize;
 import androidx.media3.common.util.Assertions;
+import androidx.media3.common.util.Log;
 import androidx.media3.common.util.UnstableApi;
 import androidx.media3.exoplayer.DecoderCounters;
 import androidx.media3.exoplayer.ExoPlayer;
@@ -87,7 +89,9 @@ public class DebugTextViewHelper {
   @UnstableApi
   @SuppressLint("SetTextI18n")
   protected final void updateAndPost() {
-    textView.setText(getDebugString());
+    final String dbgString = getDebugString();
+    Log.i("DTVHelper", dbgString);
+    textView.setText(dbgString);
     textView.removeCallbacks(updater);
     textView.postDelayed(updater, REFRESH_INTERVAL_MS);
   }

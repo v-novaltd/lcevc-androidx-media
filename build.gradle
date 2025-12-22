@@ -1,4 +1,5 @@
 // Copyright (C) 2016 The Android Open Source Project
+// Modified 2023-2025 V-Nova Limited
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -22,6 +23,7 @@ buildscript {
         classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.10'
     }
 }
+
 allprojects {
     repositories {
         google()
@@ -31,6 +33,10 @@ allprojects {
             content {
                 includeGroup "com.github.philburk"
             }
+        }
+        maven {
+            name = "v-nova"
+            url "https://gitlab.com/api/v4/groups/v-nova-group/-/packages/maven"
         }
     }
     if (it.hasProperty('externalBuildDir')) {

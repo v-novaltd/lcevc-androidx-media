@@ -221,6 +221,7 @@ public final class CodecSpecificDataUtil {
   /**
    * Builds an RFC 6381 AVC codec string using the provided parameters.
    *
+   * @param atomType The sample entry name to be used in the codec string
    * @param profileIdc The encoding profile.
    * @param constraintsFlagsAndReservedZero2Bits The constraint flags followed by the reserved zero
    *     2 bits, all contained in the least significant byte of the integer.
@@ -228,13 +229,22 @@ public final class CodecSpecificDataUtil {
    * @return An RFC 6381 AVC codec string built using the provided parameters.
    */
   public static String buildAvcCodecString(
-      int profileIdc, int constraintsFlagsAndReservedZero2Bits, int levelIdc) {
+      int atomType, int profileIdc, int constraintsFlagsAndReservedZero2Bits, int levelIdc) {
     return String.format(
-        "avc1.%02X%02X%02X", profileIdc, constraintsFlagsAndReservedZero2Bits, levelIdc);
+        "%c%c%c%c.%02X%02X%02X",
+        (atomType >> 24) & 0xFF, (atomType >> 16) & 0xFF, (atomType >> 8) & 0xFF, atomType & 0xFF,
+        profileIdc, constraintsFlagsAndReservedZero2Bits, levelIdc);
+  }
+
+  public static String buildAvcCodecString(
+      int profileIdc, int constraintsFlagsAndReservedZero2Bits, int levelIdc) {
+    return buildAvcCodecString(0x61766331, // avc1
+        profileIdc, constraintsFlagsAndReservedZero2Bits, levelIdc);
   }
 
   /** Builds an RFC 6381 HEVC codec string using the provided parameters. */
   public static String buildHevcCodecString(
+      int atomType,
       int generalProfileSpace,
       boolean generalTierFlag,
       int generalProfileIdc,
@@ -244,7 +254,11 @@ public final class CodecSpecificDataUtil {
     StringBuilder builder =
         new StringBuilder(
             Util.formatInvariant(
-                "hvc1.%s%d.%X.%c%d",
+                "%c%c%c%c.%s%d.%X.%c%d",
+                (atomType >> 24) & 0xFF,
+                (atomType >> 16) & 0xFF,
+                (atomType >> 8) & 0xFF,
+                atomType & 0xFF,
                 HEVC_GENERAL_PROFILE_SPACE_STRINGS[generalProfileSpace],
                 generalProfileIdc,
                 generalProfileCompatibilityFlags,
@@ -259,6 +273,47 @@ public final class CodecSpecificDataUtil {
       builder.append(String.format(".%02X", constraintBytes[i]));
     }
     return builder.toString();
+  }
+
+  public static String buildHevcCodecString(
+      int generalProfileSpace,
+      boolean generalTierFlag,
+      int generalProfileIdc,
+      int generalProfileCompatibilityFlags,
+      int[] constraintBytes,
+      int generalLevelIdc) {
+    return buildHevcCodecString(
+        0x68766331, // hvc1
+        generalProfileSpace,
+        generalTierFlag,
+        generalProfileIdc,
+        generalProfileCompatibilityFlags,
+        constraintBytes,
+        generalLevelIdc);
+  }
+
+  /**
+   * Builds an RFC 6381 VVC codecs string using the provided parameters.
+   *
+   * @param atomType The sample entry name to be used in the codec string
+   * @param generalProfileIdc The general_profile_idc as found in SPS.
+   * @param generalTierFlag The general_tier_flag as found in SPS.
+   * @param opLevelIdc The op_level_idc as found in SPS.
+   * @return An RFC 6381 VVC codec string built using the provided parameters
+   */
+  public static String buildVvcCodecString(
+      int atomType, int generalProfileIdc, boolean generalTierFlag, int opLevelIdc) {
+    // Assuming no constraints ("QA" for const part) as per M.4 of ISO/IEC 23000-19, Table M.2
+    return String.format(
+        "%c%c%c%c.%d.%s%d.CQA",
+        (atomType >> 24) & 0xFF, (atomType >> 16) & 0xFF, (atomType >> 8) & 0xFF, atomType & 0xFF,
+        generalProfileIdc, generalTierFlag ? "H" : "L", opLevelIdc);
+  }
+
+  public static String buildVvcCodecString(
+      int generalProfileIdc, boolean generalTierFlag, int opLevelIdc) {
+    return buildVvcCodecString(0x76766331, // vvc1
+        generalProfileIdc, generalTierFlag, opLevelIdc);
   }
 
   /** Builds an RFC 6381 H263 codec string using profile and level. */

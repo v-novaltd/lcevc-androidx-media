@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2016 The Android Open Source Project
+ * Modified 2023-2025 V-Nova Limited
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -64,12 +65,12 @@ import androidx.media3.exoplayer.offline.DownloadService;
 import com.google.common.base.Objects;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -95,6 +96,7 @@ public class SampleChooserActivity extends AppCompatActivity
   @Nullable private MediaItem downloadMediaItemWaitingForNotificationPermission;
   private boolean notificationPermissionToastShown;
 
+  @OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)
   @Override
   public void onCreate(Bundle savedInstanceState) {
     super.onCreate(savedInstanceState);
@@ -123,9 +125,16 @@ public class SampleChooserActivity extends AppCompatActivity
         Toast.makeText(getApplicationContext(), R.string.sample_list_load_error, Toast.LENGTH_LONG)
             .show();
       }
+      // now load our local file at the top of the list
+      File localMedialistPath = getExternalFilesDir(null);
+      File localMedialistFile = new File(localMedialistPath, "local.exolist.json");
+      if (localMedialistFile.exists()) {
+        Log.d(TAG, "Local medialist file " + localMedialistFile.getAbsolutePath() + " found");
+        uriList.add(0,"file://" + localMedialistFile.getAbsolutePath());
+      }
       uris = new String[uriList.size()];
       uriList.toArray(uris);
-      Arrays.sort(uris);
+      //Arrays.sort(uris);
     }
 
     useExtensionRenderers = DemoUtil.useExtensionRenderers();
@@ -332,6 +341,7 @@ public class SampleChooserActivity extends AppCompatActivity
           });
     }
 
+    @OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)
     private void readPlaylistGroups(JsonReader reader, List<PlaylistGroup> groups)
         throws IOException {
       reader.beginArray();
@@ -341,6 +351,7 @@ public class SampleChooserActivity extends AppCompatActivity
       reader.endArray();
     }
 
+    @OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)
     private void readPlaylistGroup(JsonReader reader, List<PlaylistGroup> groups)
         throws IOException {
       String groupName = "";
@@ -462,7 +473,10 @@ public class SampleChooserActivity extends AppCompatActivity
             reader.endArray();
             break;
           default:
-            throw new IOException("Unsupported attribute name: " + name, /* cause= */ null);
+            // Just ignore unsupported attributes, no reason to panic and throw stuff
+            Log.w(TAG, "Unsupported attribute name: " + name);
+            reader.skipValue();
+            // throw new IOException("Unsupported attribute name: " + name, /* cause= */ null);
         }
       }
       reader.endObject();

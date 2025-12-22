@@ -39,7 +39,7 @@ public final class AvcConfig {
    * @return A parsed representation of the AVC configuration data.
    * @throws ParserException If an error occurred parsing the data.
    */
-  public static AvcConfig parse(ParsableByteArray data) throws ParserException {
+  public static AvcConfig parse(ParsableByteArray data, int atomType) throws ParserException {
     try {
       data.skipBytes(4); // Skip to the AVCDecoderConfigurationRecord (defined in 14496-15)
       int nalUnitLengthFieldLength = (data.readUnsignedByte() & 0x3) + 1;
@@ -83,7 +83,7 @@ public final class AvcConfig {
         pixelWidthHeightRatio = spsData.pixelWidthHeightRatio;
         codecs =
             CodecSpecificDataUtil.buildAvcCodecString(
-                spsData.profileIdc, spsData.constraintsFlagsAndReservedZero2Bits, spsData.levelIdc);
+                atomType, spsData.profileIdc, spsData.constraintsFlagsAndReservedZero2Bits, spsData.levelIdc);
       }
 
       return new AvcConfig(
@@ -102,6 +102,10 @@ public final class AvcConfig {
     } catch (ArrayIndexOutOfBoundsException e) {
       throw ParserException.createForMalformedContainer("Error parsing AVC config", e);
     }
+  }
+
+  public static AvcConfig parse(ParsableByteArray data) throws ParserException {
+    return parse(data, 0x61766331 /* avc1 */);
   }
 
   /**

@@ -51,7 +51,7 @@ public final class Track {
   public final int id;
 
   /**
-   * One of {@link C#TRACK_TYPE_AUDIO}, {@link C#TRACK_TYPE_VIDEO} and {@link C#TRACK_TYPE_TEXT}.
+   * One of {@link C#TRACK_TYPE_AUDIO}, {@link C#TRACK_TYPE_VIDEO}, {@link C#TRACK_TYPE_VIDEO_SCALABLE_BASE} and {@link C#TRACK_TYPE_TEXT}.
    */
   public final @C.TrackType int type;
 
@@ -88,6 +88,9 @@ public final class Track {
    */
   public final int nalUnitLengthFieldLength;
 
+  /** The identifier of the scalable base track. */
+  public final int scalableBaseId;
+
   @Nullable private final TrackEncryptionBox[] sampleDescriptionEncryptionBoxes;
 
   public Track(
@@ -101,6 +104,7 @@ public final class Track {
       @Transformation int sampleTransformation,
       @Nullable TrackEncryptionBox[] sampleDescriptionEncryptionBoxes,
       int nalUnitLengthFieldLength,
+      int scalableBaseId,
       @Nullable long[] editListDurations,
       @Nullable long[] editListMediaTimes) {
     this.id = id;
@@ -113,6 +117,7 @@ public final class Track {
     this.sampleTransformation = sampleTransformation;
     this.sampleDescriptionEncryptionBoxes = sampleDescriptionEncryptionBoxes;
     this.nalUnitLengthFieldLength = nalUnitLengthFieldLength;
+    this.scalableBaseId = scalableBaseId;
     this.editListDurations = editListDurations;
     this.editListMediaTimes = editListMediaTimes;
   }
@@ -143,6 +148,7 @@ public final class Track {
         sampleTransformation,
         sampleDescriptionEncryptionBoxes,
         nalUnitLengthFieldLength,
+        scalableBaseId,
         editListDurations,
         editListMediaTimes);
   }
@@ -159,6 +165,7 @@ public final class Track {
         sampleTransformation,
         sampleDescriptionEncryptionBoxes,
         nalUnitLengthFieldLength,
+        scalableBaseId,
         /* editListDurations= */ null,
         /* editListMediaTimes= */ null);
   }

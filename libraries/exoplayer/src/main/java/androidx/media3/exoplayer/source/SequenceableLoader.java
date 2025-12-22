@@ -68,4 +68,8 @@ public interface SequenceableLoader {
    *     of any media in previous periods still to be played.
    */
   void reevaluateBuffer(long positionUs);
+
+  default boolean isEnhancement() {
+    return false;
+  }
 }

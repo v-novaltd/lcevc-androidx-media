@@ -133,12 +133,20 @@ public final class NalUnitUtil {
   /** H.265 suffixed supplemental enhancement information (SUFFIX_SEI_NUT). */
   public static final int H265_NAL_UNIT_TYPE_SUFFIX_SEI = 40;
 
+  /** H.266 prefixed supplemental enhancement information. */
+  public static final int H266_NAL_UNIT_TYPE_PREFIX_SEI = 23;
+
+  /** MPEG-5 Part 2 (LCEVC)  nal unit types. */
+  public static final int LCEVC_NAL_UNIT_TYPE_NON_IDR = 60;
+  public static final int LCEVC_NAL_UNIT_TYPE_IDR = 61;
+
   /** Holds data parsed from a H.264 sequence parameter set NAL unit. */
   public static final class SpsData {
 
     public final int profileIdc;
     public final int constraintsFlagsAndReservedZero2Bits;
     public final int levelIdc;
+    public final boolean tierFlag;
     public final int seqParameterSetId;
     public final int maxNumRefFrames;
     public final int width;
@@ -161,6 +169,7 @@ public final class NalUnitUtil {
         int profileIdc,
         int constraintsFlagsAndReservedZero2Bits,
         int levelIdc,
+        boolean tierFlag,
         int seqParameterSetId,
         int maxNumRefFrames,
         int width,
@@ -181,6 +190,7 @@ public final class NalUnitUtil {
       this.profileIdc = profileIdc;
       this.constraintsFlagsAndReservedZero2Bits = constraintsFlagsAndReservedZero2Bits;
       this.levelIdc = levelIdc;
+      this.tierFlag = tierFlag;
       this.seqParameterSetId = seqParameterSetId;
       this.maxNumRefFrames = maxNumRefFrames;
       this.width = width;
@@ -604,34 +614,21 @@ public final class NalUnitUtil {
    * Returns whether the NAL unit with the specified header contains supplemental enhancement
    * information.
    *
-   * @param mimeType The sample MIME type, or {@code null} if unknown.
-   * @param nalUnitHeaderFirstByte The first byte of nal_unit().
-   * @return Whether the NAL unit with the specified header is an SEI NAL unit. False is returned if
-   *     the {@code MimeType} is {@code null}.
-   */
-  public static boolean isNalUnitSei(@Nullable String mimeType, byte nalUnitHeaderFirstByte) {
-    return (MimeTypes.VIDEO_H264.equals(mimeType)
-            && (nalUnitHeaderFirstByte & 0x1F) == H264_NAL_UNIT_TYPE_SEI)
-        || (MimeTypes.VIDEO_H265.equals(mimeType)
-            && ((nalUnitHeaderFirstByte & 0x7E) >> 1) == H265_NAL_UNIT_TYPE_PREFIX_SEI);
-  }
-
-  /**
-   * Returns whether the NAL unit with the specified header contains supplemental enhancement
-   * information.
-   *
    * @param format The sample {@link Format}.
    * @param nalUnitHeaderFirstByte The first byte of nal_unit().
    * @return Whether the NAL unit with the specified header is an SEI NAL unit. False is returned if
    *     the {@code MimeType} is {@code null}.
    */
-  public static boolean isNalUnitSei(Format format, byte nalUnitHeaderFirstByte) {
+  public static boolean isNalUnitSei(Format format, byte nalUnitHeaderFirstByte, byte nalUnitHeaderSecondByte) {
     return ((Objects.equals(format.sampleMimeType, MimeTypes.VIDEO_H264)
                 || containsCodecsCorrespondingToMimeType(format.codecs, MimeTypes.VIDEO_H264))
             && (nalUnitHeaderFirstByte & 0x1F) == H264_NAL_UNIT_TYPE_SEI)
         || ((Objects.equals(format.sampleMimeType, MimeTypes.VIDEO_H265)
                 || containsCodecsCorrespondingToMimeType(format.codecs, MimeTypes.VIDEO_H265))
-            && ((nalUnitHeaderFirstByte & 0x7E) >> 1) == H265_NAL_UNIT_TYPE_PREFIX_SEI);
+            && ((nalUnitHeaderFirstByte & 0x7E) >> 1) == H265_NAL_UNIT_TYPE_PREFIX_SEI)
+        || ((Objects.equals(format.sampleMimeType, MimeTypes.VIDEO_H266)
+                || containsCodecsCorrespondingToMimeType(format.codecs, MimeTypes.VIDEO_H266))
+            && ((nalUnitHeaderSecondByte & 0xF8) >> 3) == H266_NAL_UNIT_TYPE_PREFIX_SEI);
   }
 
   /**
@@ -691,6 +688,18 @@ public final class NalUnitUtil {
    */
   public static int getH265NalUnitType(byte[] data, int offset) {
     return (data[offset + 3] & 0x7E) >> 1;
+  }
+
+  /**
+   * Returns the type of the H.266 NAL unit in {@code data} that starts at {@code offset}.
+   *
+   * @param data The data to search.
+   * @param offset The start offset of a NAL unit. Must lie between {@code -3} (inclusive) and
+   *     {@code data.length - 3} (exclusive).
+   * @return The type of the unit.
+   */
+  public static int getH266NalUnitType(byte[] data, int offset) {
+    return (data[offset + 4] & 0xF8) >> 3;
   }
 
   /**
@@ -891,6 +900,7 @@ public final class NalUnitUtil {
         profileIdc,
         constraintsFlagsAndReservedZero2Bits,
         levelIdc,
+        false,
         seqParameterSetId,
         maxNumRefFrames,
         frameWidth,
