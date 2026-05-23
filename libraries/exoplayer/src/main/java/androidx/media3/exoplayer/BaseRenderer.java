@@ -182,7 +182,7 @@ public abstract class BaseRenderer implements Renderer, RendererCapabilities {
   }
 
   @Override
-  public final boolean hasReadStreamToEnd() {
+  public boolean hasReadStreamToEnd() {
     return readingPositionUs == C.TIME_END_OF_SOURCE;
   }
 

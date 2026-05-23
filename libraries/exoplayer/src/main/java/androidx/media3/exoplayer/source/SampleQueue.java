@@ -475,6 +475,7 @@ public class SampleQueue implements TrackOutput {
       boolean loadingFinished) {
     boolean idleChanged = maybeSwitchIdle();
     boolean formatRequired = ((readFlags & FLAG_REQUIRE_FORMAT) != 0) || idleChanged;
+    buffer.setFlags(0);
     int result = maybePeekScalableBaseSampleMetadata(
         formatHolder,
         buffer,

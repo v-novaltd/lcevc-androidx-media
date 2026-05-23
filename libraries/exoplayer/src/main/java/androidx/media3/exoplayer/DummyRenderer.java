@@ -61,4 +61,9 @@ public class DummyRenderer extends BaseRenderer {
   public boolean isEnded() {
     return true;
   }
+
+  @Override
+  public boolean hasReadStreamToEnd() {
+    return true;
+  }
 }
